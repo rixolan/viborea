@@ -3,13 +3,13 @@ services:
     image: postgres:18
     restart: unless-stopped
     environment:
-      POSTGRES_USER: bandeja
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bandeja}
-      POSTGRES_DB: bandeja
+      POSTGRES_USER: viborea
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-viborea}
+      POSTGRES_DB: viborea
     volumes:
       - pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bandeja -d bandeja"]
+      test: ["CMD-SHELL", "pg_isready -U viborea -d viborea"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -26,7 +26,7 @@ services:
         VITE_CLERK_PUBLISHABLE_KEY: ${NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-${VITE_CLERK_PUBLISHABLE_KEY:-}}
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://bandeja:${POSTGRES_PASSWORD:-bandeja}@db:5432/bandeja
+      DATABASE_URL: postgres://viborea:${POSTGRES_PASSWORD:-viborea}@db:5432/viborea
       PORT: "8080"
     depends_on:
       db:
@@ -37,7 +37,7 @@ services:
       - internal
     labels:
       - traefik.enable=true
-      - traefik.docker.network=bandeja-2ryryu
+      - traefik.docker.network=viborea
       - traefik.http.routers.viborea.rule=Host(`viborea.com`) || Host(`www.viborea.com`)
       - traefik.http.routers.viborea.entrypoints=web
       - traefik.http.routers.viborea.middlewares=redirect-to-https@file
@@ -53,8 +53,9 @@ services:
 
 volumes:
   pgdata:
+    name: viborea_pgdata
 
 networks:
   internal:
-    name: bandeja-2ryryu
+    name: viborea
     external: true

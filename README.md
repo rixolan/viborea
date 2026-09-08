@@ -23,7 +23,7 @@ Solo la base, para `bun --hot` en local:
 
 ```bash
 docker compose up -d db
-DATABASE_URL=postgres://bandeja:bandeja@127.0.0.1:5432/bandeja bun run dev
+DATABASE_URL=postgres://viborea:viborea@127.0.0.1:5432/viborea bun run dev
 ```
 
 `bun run dev` arranca **core**, no Vite. El árbol raíz sigue siendo el fork de Tandava (referencia de dominio, AGPL). Para esa SPA: `bun run dev:fork` → `http://localhost:8080`.
