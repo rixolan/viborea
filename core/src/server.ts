@@ -96,8 +96,8 @@ function weekQuery(form: URLSearchParams): string {
   const day = form.get("day") ?? "0";
   return `/?week=${encodeURIComponent(week)}&day=${encodeURIComponent(day)}`;
 }
-
 Bun.serve({
+  hostname: "0.0.0.0",
   port: PORT,
   async fetch(req) {
     const url = new URL(req.url);
