@@ -8,16 +8,19 @@ Viborea es un fork de [Tandava](https://github.com/TaylorONeal/tandava) (AGPL-3.
 
 No es alquiler de canchas al público. No es “reservá 30 minutos conmigo”.
 
+Agentes: [AGENTS.md](AGENTS.md), [SKILLS.md](SKILLS.md), glosario [CONTEXT.md](CONTEXT.md).
 
-## MVP (Bun + Postgres)
+## MVP (Bun + Postgres + React)
 
-El producto usable está en `core/`: runtime Bun, Postgres 18, HTML + Tailwind. Sin React. Admin en `/`. Alumnos en `/alumnos`. Enlace público: `/reservar`.
+Producto: `core/` (Bun.serve, Postgres 18, `/api`) y `web/` (Vite + React, un solo diseño). Un proceso en producción sirve API + SPA.
+
+Áreas: **Jugador** (`/jugador`) y **Academia** (`/academia`). Reserva pública: `/reservar`.
 
 ```bash
 docker compose up --build
 ```
 
-Abre `http://localhost:3000`. Postgres no se publica fuera de `127.0.0.1`. En Dokploy: mismo `compose.yaml`, password en `POSTGRES_PASSWORD`.
+En Dokploy el compose publica la app en `:8080` (`https://viborea.com`). Local: `docker compose up -d db`, `bun run dev` (API) y `bun run web` (Vite).
 
 Solo la base, para `bun --hot` en local:
 
@@ -26,7 +29,7 @@ docker compose up -d db
 DATABASE_URL=postgres://viborea:viborea@127.0.0.1:5432/viborea bun run dev
 ```
 
-`bun run dev` arranca **core**, no Vite. El árbol raíz sigue siendo el fork de Tandava (referencia de dominio, AGPL). Para esa SPA: `bun run dev:fork` → `http://localhost:8080`.
+`bun run dev` arranca **core** (API). `bun run web` arranca la SPA de producto. `bun run dev:fork` es la SPA Tandava de referencia, no la cara de Viborea.
 ---
 
 ## Fork Tandava (referencia)
