@@ -35,10 +35,9 @@ services:
       - "8080"
     networks:
       - internal
-      - dokploy
     labels:
       - traefik.enable=true
-      - traefik.docker.network=dokploy-network
+      - traefik.docker.network=bandeja-2ryryu
       - traefik.http.routers.viborea.rule=Host(`viborea.com`) || Host(`www.viborea.com`)
       - traefik.http.routers.viborea.entrypoints=web
       - traefik.http.routers.viborea.middlewares=redirect-to-https@file
@@ -48,7 +47,6 @@ services:
       - traefik.http.routers.viboreasecure.rule=Host(`viborea.com`) || Host(`www.viborea.com`)
       - traefik.http.routers.viboreasecure.entrypoints=websecure
       - traefik.http.routers.viboreasecure.tls=true
-      - traefik.http.routers.viboreasecure.tls.certresolver=letsencrypt
       - traefik.http.routers.viboreasecure.priority=10
       - traefik.http.routers.viboreasecure.service=viboreasecure
       - traefik.http.services.viboreasecure.loadbalancer.server.port=8080
@@ -59,7 +57,4 @@ volumes:
 networks:
   internal:
     name: bandeja-2ryryu
-    external: true
-  dokploy:
-    name: dokploy-network
     external: true
