@@ -4,12 +4,12 @@
       title="La academia, en un solo sistema"
       description="Viborea gestiona la grilla de pádel: sede, pista, entrenador y horario. Packs o clase suelta, cobro adelantado, sin doble reserva."
       :links="[{
-        label: 'Crear cuenta',
-        to: '/sign-up',
+        label: 'Reservar una clase',
+        to: '/reservar',
         trailingIcon: 'i-lucide-arrow-right',
         size: 'xl'
       }, {
-        label: 'Ya tengo cuenta',
+        label: 'Entrar',
         to: '/sign-in',
         size: 'xl',
         color: 'neutral',

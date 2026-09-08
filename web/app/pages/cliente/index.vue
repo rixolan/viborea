@@ -7,13 +7,18 @@ definePageMeta({
 
 <template>
   <div class="space-y-6">
-    <div>
-      <h1 class="text-2xl font-semibold tracking-tight">
-        Tu academia
-      </h1>
-      <p class="text-muted mt-1">
-        Próximas clases, saldo del pack y reservas. Esto es el portal del alumno.
-      </p>
+    <div class="flex items-end justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-semibold tracking-tight">
+          Tu academia
+        </h1>
+        <p class="text-muted mt-1">
+          Próximas clases, saldo del pack y reservas.
+        </p>
+      </div>
+      <UButton to="/reservar" trailing-icon="i-lucide-arrow-right">
+        Reservar clase
+      </UButton>
     </div>
     <div class="grid gap-4 sm:grid-cols-3">
       <UCard>

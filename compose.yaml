@@ -27,6 +27,21 @@ services:
         condition: service_healthy
     expose:
       - "8080"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=bandeja-2ryryu
+      - traefik.http.routers.viborea-book.rule=(Host(`viborea.com`) || Host(`www.viborea.com`)) && PathPrefix(`/reservar`)
+      - traefik.http.routers.viborea-book.entrypoints=web
+      - traefik.http.routers.viborea-book.middlewares=redirect-to-https@file
+      - traefik.http.routers.viborea-book.priority=200
+      - traefik.http.routers.viborea-book.service=viborea-book
+      - traefik.http.services.viborea-book.loadbalancer.server.port=8080
+      - traefik.http.routers.viborea-booksecure.rule=(Host(`viborea.com`) || Host(`www.viborea.com`)) && PathPrefix(`/reservar`)
+      - traefik.http.routers.viborea-booksecure.entrypoints=websecure
+      - traefik.http.routers.viborea-booksecure.tls=true
+      - traefik.http.routers.viborea-booksecure.priority=200
+      - traefik.http.routers.viborea-booksecure.service=viborea-booksecure
+      - traefik.http.services.viborea-booksecure.loadbalancer.server.port=8080
 
   web:
     build: ./web

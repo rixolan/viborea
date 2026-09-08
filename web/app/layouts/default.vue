@@ -7,6 +7,9 @@
         </NuxtLink>
       </template>
       <template #right>
+        <UButton to="/reservar" color="neutral">
+          Reservar clase
+        </UButton>
         <UButton to="/cliente" color="neutral" variant="ghost">
           Área de cliente
         </UButton>
@@ -14,7 +17,7 @@
           Administración
         </UButton>
         <Show when="signed-out">
-          <UButton to="/sign-in" color="neutral">
+          <UButton to="/sign-in" color="neutral" variant="ghost">
             Entrar
           </UButton>
         </Show>
