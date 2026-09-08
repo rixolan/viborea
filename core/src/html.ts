@@ -1,6 +1,7 @@
 import type { Academy, BookingView, Coach, Court, Location, Offering, SessionView, Student } from "./db";
 import { addDays } from "./db";
 import { dateKey, hhmm } from "./domain/template";
+import { CATEGORY_LABELS, PLAYING_SIDES, SIDE_LABELS, STUDENT_CATEGORIES } from "./domain/student";
 import { PLACEHOLDER_HOURS, slotBusy, PLACEHOLDER_PROFES, PLACEHOLDER_SEDES } from "./placeholders";
 const DAYS: { offset: number; label: string }[] = [
   { offset: 0, label: "Lun" },
@@ -18,6 +19,24 @@ export function esc(s: string): string {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function categorySelect(name: string, value = "beginner"): string {
+  const opts = STUDENT_CATEGORIES.map(
+    (c) => `<option value="${c}"${c === value ? " selected" : ""}>${esc(CATEGORY_LABELS[c])}</option>`,
+  ).join("");
+  return `<select name="${name}" class="mt-1 w-full rounded-xl border-0 bg-[#f4f1ea] px-3 py-2.5 ring-1 ring-stone-200">${opts}</select>`;
+}
+
+function sideSelect(name: string, value: string | null = null): string {
+  const opts = [`<option value="">—</option>`]
+    .concat(
+      PLAYING_SIDES.map(
+        (s) => `<option value="${s}"${s === value ? " selected" : ""}>${esc(SIDE_LABELS[s])}</option>`,
+      ),
+    )
+    .join("");
+  return `<select name="${name}" class="mt-1 w-full rounded-xl border-0 bg-[#f4f1ea] px-3 py-2.5 ring-1 ring-stone-200">${opts}</select>`;
 }
 
 function courtNoun(locale: string): string {
@@ -46,7 +65,10 @@ export function layout(
   const brandHref = kind === "public" ? "/reservar" : "/";
   const extra =
     kind === "admin"
-      ? `<a class="text-sm font-medium text-teal-800 hover:underline" href="/reservar">Enlace para alumnos</a>`
+      ? `<nav class="flex gap-4 text-sm font-medium text-teal-800">
+          <a class="hover:underline" href="/alumnos">Alumnos</a>
+          <a class="hover:underline" href="/reservar">Enlace para alumnos</a>
+        </nav>`
       : stepBar(publicStep ?? 1);
   return `<!doctype html>
 <html lang="es">
@@ -194,8 +216,9 @@ export function sessionPage(opts: {
               : bk.status === "pending_payment"
                 ? `<form method="post" action="/reservas/${esc(bk.id)}/estado" class="inline"><input type="hidden" name="week" value="${esc(opts.week)}"><input type="hidden" name="day" value="${opts.day}"><input type="hidden" name="status" value="confirmed"><button class="text-xs text-teal-700 underline">marcar pagado</button></form>`
                 : "";
+          const meta = `${CATEGORY_LABELS[bk.category]}${bk.side ? ` · ${SIDE_LABELS[bk.side]}` : ""}`;
           return `<li class="flex items-center justify-between py-2 text-sm">
-            <span>${esc(bk.student_name)}</span>
+            <span>${esc(bk.student_name)} <span class="text-stone-400">${esc(meta)}</span></span>
             <span class="flex items-center gap-3"><span class="text-stone-500">${esc(bk.status)}</span>${pay}</span>
           </li>`;
         })
@@ -590,8 +613,40 @@ export function pilotoPage(
       <label class="text-sm font-medium">WhatsApp (con código de país)
         <input required name="phone" type="tel" class="mt-1 w-full rounded-xl border-0 bg-[#f4f1ea] px-3 py-2.5 ring-1 ring-stone-200" placeholder="+595981111111">
       </label>
+      <label class="text-sm font-medium">Categoría
+        ${categorySelect("category")}
+      </label>
+      <label class="text-sm font-medium">Lado
+        ${sideSelect("side")}
+      </label>
       <p class="text-xs text-stone-500">El número tiene que estar en la lista de prueba de Meta para recibir el mensaje.</p>
       <button class="rounded-full bg-teal-800 px-4 py-3 text-sm font-semibold text-white">Reservar y avisar</button>
     </form>`;
   return layout(academy, "Piloto WhatsApp", body, flash);
+}
+
+export function alumnosPage(academy: Academy, students: Student[], flash?: { ok?: string; error?: string }): string {
+  const rows = students
+    .map(
+      (st) => `<form method="post" action="/alumnos" class="grid grid-cols-[1fr_8rem_8rem_auto] items-end gap-2 border-b border-stone-100 py-3">
+        <input type="hidden" name="id" value="${esc(st.id)}">
+        <label class="text-xs text-stone-500">Nombre
+          <input name="name" value="${esc(st.name)}" class="mt-1 w-full rounded-lg border-0 bg-[#f4f1ea] px-2 py-2 text-sm ring-1 ring-stone-200">
+        </label>
+        <label class="text-xs text-stone-500">Categoría
+          ${categorySelect("category", st.category)}
+        </label>
+        <label class="text-xs text-stone-500">Lado
+          ${sideSelect("side", st.side)}
+        </label>
+        <button class="mb-0.5 rounded-lg bg-teal-800 px-3 py-2 text-sm font-medium text-white">Guardar</button>
+        <p class="col-span-4 text-xs text-stone-400">${esc(st.phone)}</p>
+      </form>`,
+    )
+    .join("");
+  const body = `
+    <h1 class="font-display text-3xl">Alumnos</h1>
+    <p class="text-sm text-stone-500">Categoría (principiante, 1–8, profesional) y lado (drive o revés).</p>
+    <div class="rounded-3xl bg-white px-5 shadow-sm ring-1 ring-stone-200/80">${rows || `<p class="py-8 text-sm text-stone-500">Todavía no hay alumnos.</p>`}</div>`;
+  return layout(academy, "Alumnos", body, flash);
 }

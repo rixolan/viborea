@@ -5,6 +5,10 @@
   "scripts": {
     "dev": "bun --hot src/server.ts",
     "start": "bun src/server.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "fill": "bun scripts/fill-analytics.ts"
+  },
+  "dependencies": {
+    "postgres": "^3.4.9"
   }
 }

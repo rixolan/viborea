@@ -47,3 +47,15 @@ _Avoid_: booking, charge (como sinónimo de session)
 **Channel**:
 Metadata de origen del booking (`web`, `whatsapp`, `admin`). No forka la grilla.
 _Avoid_: inbox, conversation
+
+**Student**:
+Alumno de la academia. Persona que reserva; no es un usuario de software.
+_Avoid_: client, user, member
+
+**Category**:
+Nivel de juego del alumno: principiante, 1–8 o profesional. No es un ranking externo ni un pack.
+_Avoid_: level, ranking, handicap
+
+**Playing side**:
+Lado de la pista que ocupa el alumno: drive o revés. No es la mano hábil.
+_Avoid_: handedness, diestro, zurdo

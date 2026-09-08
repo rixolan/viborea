@@ -14,7 +14,7 @@ export const FALLBACK_PROMPT = "No te seguí. Elegí una opción:";
 
 export const NUEVO_PROMPT = `Academia Diego González — profes del pádel.
 
-Tres clubes de Asunción: Lomas, Elite y Segurola & Habana.
+Tres clubes de Asunción: Lomas, Elite Padel y Habana.
 Desde el primer golpe hasta alto rendimiento. Clases en español, inglés, portugués e italiano.
 
 Un equipo de profes de primera, con Diego González al frente.
@@ -29,8 +29,8 @@ Se paga adelantado. Si cancelás con menos de 24 h, se cobra.
 export const HORARIOS_PROMPT = `Disponibilidad de ejemplo — no lee la planilla:
 
 • Mañana 11:00 — Individual · Lomas
-• Miércoles 16:00 — Dual · Elite
-• Jueves 16:00 — Grupal · Segurola
+• Miércoles 16:00 — Dual · Elite Padel
+• Jueves 16:00 — Grupal · Habana
 
 El pico 15:00–17:00 suele estar lleno.
 

@@ -98,11 +98,11 @@ tandava/
 ## Running Locally
 
 ```bash
-bun install
-bun run dev
+docker compose up -d db
+DATABASE_URL=postgres://bandeja:bandeja@127.0.0.1:5432/bandeja bun run dev
 ```
 
-Opens at http://localhost:3000 (`core/`, Bun + SQLite). The Vite SPA at 8080 is the Tandava fork: `bun run dev:fork`.
+Opens at http://localhost:3000 (`core/`, Bun + Postgres 18). The Vite SPA at 8080 is the Tandava fork: `bun run dev:fork`.
 
 ---
 

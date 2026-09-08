@@ -1,8 +1,8 @@
-import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import type { DayOfWeek, SessionInterval } from "./domain/types";
 import { assertNoOverlap } from "./domain/overlap";
 import { nextBookingStatus } from "./domain/capacity";
+import { dateKey, materializeTemplate, mondayOf, type WeeklyTemplateSlot } from "./domain/template";
+import { addDays } from "./domain/template";
 import {
   consumeOnConfirm,
   offeringKindFromCapacity,
@@ -11,100 +11,13 @@ import {
   type PackAlert,
   type PackSize,
 } from "./domain/pack";
-import { addDays, dateKey, materializeTemplate, mondayOf } from "./domain/template";
-import type { BookingStatus, DayOfWeek, SessionInterval, WeeklyTemplateSlot } from "./domain/types";
+import { parseCategory, parseSide, type PlayingSide, type StudentCategory } from "./domain/student";
+import type { BookingStatus } from "./domain/types";
 import { OverlapError } from "./domain/types";
+import { connect, type Db } from "./db/pg";
+import { migrate } from "./db/migrate";
 
-const SCHEMA = `
-PRAGMA foreign_keys = ON;
-CREATE TABLE IF NOT EXISTS academy (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  locale TEXT NOT NULL,
-  currency TEXT NOT NULL,
-  timezone TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS locations (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS courts (
-  id TEXT PRIMARY KEY,
-  location_id TEXT NOT NULL REFERENCES locations(id),
-  name TEXT NOT NULL,
-  number INTEGER
-);
-CREATE TABLE IF NOT EXISTS coaches (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS offerings (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  duration_minutes INTEGER NOT NULL,
-  capacity INTEGER NOT NULL,
-  price INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS templates (
-  id TEXT PRIMARY KEY,
-  offering_id TEXT NOT NULL REFERENCES offerings(id),
-  location_id TEXT NOT NULL REFERENCES locations(id),
-  court_id TEXT NOT NULL REFERENCES courts(id),
-  coach_id TEXT NOT NULL REFERENCES coaches(id),
-  weekday TEXT NOT NULL,
-  start_time TEXT NOT NULL,
-  end_time TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS sessions (
-  id TEXT PRIMARY KEY,
-  template_id TEXT REFERENCES templates(id),
-  offering_id TEXT NOT NULL REFERENCES offerings(id),
-  location_id TEXT NOT NULL REFERENCES locations(id),
-  court_id TEXT NOT NULL REFERENCES courts(id),
-  coach_id TEXT NOT NULL REFERENCES coaches(id),
-  starts_at TEXT NOT NULL,
-  ends_at TEXT NOT NULL,
-  capacity INTEGER NOT NULL,
-  source TEXT NOT NULL,
-  cancelled INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS students (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  phone TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS packs (
-  id TEXT PRIMARY KEY,
-  student_id TEXT NOT NULL REFERENCES students(id),
-  offering_kind TEXT NOT NULL,
-  size INTEGER NOT NULL,
-  remaining INTEGER NOT NULL,
-  purchased_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS bookings (
-  id TEXT PRIMARY KEY,
-  session_id TEXT NOT NULL REFERENCES sessions(id),
-  student_id TEXT NOT NULL REFERENCES students(id),
-  status TEXT NOT NULL,
-  channel TEXT NOT NULL DEFAULT 'admin',
-  pack_id TEXT REFERENCES packs(id),
-  UNIQUE(session_id, student_id)
-);
-CREATE TABLE IF NOT EXISTS pack_alerts (
-  id TEXT PRIMARY KEY,
-  student_id TEXT NOT NULL REFERENCES students(id),
-  pack_id TEXT NOT NULL REFERENCES packs(id),
-  remaining INTEGER NOT NULL,
-  total INTEGER NOT NULL,
-  buy_again INTEGER NOT NULL,
-  message TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_sessions_starts ON sessions(starts_at);
-CREATE INDEX IF NOT EXISTS idx_bookings_session ON bookings(session_id);
-CREATE INDEX IF NOT EXISTS idx_packs_student ON packs(student_id);
-`;
+export type { Db };
 
 export type Academy = { id: string; name: string; locale: string; currency: string; timezone: string };
 export type Location = { id: string; name: string };
@@ -117,7 +30,13 @@ export type Offering = {
   capacity: number;
   price: number;
 };
-export type Student = { id: string; name: string; phone: string };
+export type Student = {
+  id: string;
+  name: string;
+  phone: string;
+  category: StudentCategory;
+  side: PlayingSide | null;
+};
 
 export type SessionView = {
   id: string;
@@ -146,70 +65,138 @@ export type BookingView = {
   student_id: string;
   student_name: string;
   status: BookingStatus;
+  category: StudentCategory;
+  side: PlayingSide | null;
 };
 
-export function openDb(path = "data/bandeja.sqlite"): Database {
-  if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
-  const db = new Database(path, { create: true });
-  db.exec("PRAGMA journal_mode = WAL;");
-  db.exec("PRAGMA foreign_keys = ON;");
-  db.exec(SCHEMA);
-  const cols = db.query("PRAGMA table_info(students)").all() as { name: string }[];
-  if (!cols.some((c) => c.name === "phone")) {
-    db.exec("ALTER TABLE students ADD COLUMN phone TEXT NOT NULL DEFAULT ''");
-  }
-  const bookingCols = db.query("PRAGMA table_info(bookings)").all() as { name: string }[];
-  if (!bookingCols.some((c) => c.name === "pack_id")) {
-    db.exec("ALTER TABLE bookings ADD COLUMN pack_id TEXT REFERENCES packs(id)");
-  }
-  return db;
+function iso(v: unknown): string {
+  return v instanceof Date ? v.toISOString() : String(v);
 }
 
-export function academy(db: Database): Academy {
-  const row = db.query("SELECT * FROM academy LIMIT 1").get() as Academy | null;
-  if (!row) throw new Error("Academy not seeded");
-  return row;
+function flag(v: unknown): number {
+  return v === true || v === 1 || v === "t" ? 1 : 0;
 }
 
-export function catalogs(db: Database) {
+function num(v: unknown): number {
+  return Number(v);
+}
+
+function studentFrom(row: {
+  id: string;
+  name: string;
+  phone: string;
+  category: string;
+  side: string | null;
+}): Student {
   return {
-    locations: db.query("SELECT * FROM locations ORDER BY name").all() as Location[],
-    courts: db.query("SELECT * FROM courts ORDER BY location_id, number").all() as Court[],
-    coaches: db.query("SELECT * FROM coaches ORDER BY name").all() as Coach[],
-    offerings: db.query("SELECT * FROM offerings ORDER BY capacity").all() as Offering[],
-    students: db.query("SELECT * FROM students ORDER BY name").all() as Student[],
+    id: row.id,
+    name: row.name,
+    phone: row.phone,
+    category: parseCategory(row.category),
+    side: parseSide(row.side),
   };
 }
 
-function toInterval(row: { id: string; court_id: string; coach_id: string; starts_at: string; ends_at: string; cancelled: number }): SessionInterval {
+function sessionFrom(row: Record<string, unknown>): SessionView {
+  return {
+    id: String(row.id),
+    template_id: (row.template_id as string | null) ?? null,
+    offering_id: String(row.offering_id),
+    offering_name: String(row.offering_name),
+    location_id: String(row.location_id),
+    location_name: String(row.location_name),
+    court_id: String(row.court_id),
+    court_name: String(row.court_name),
+    coach_id: String(row.coach_id),
+    coach_name: String(row.coach_name),
+    starts_at: iso(row.starts_at),
+    ends_at: iso(row.ends_at),
+    capacity: num(row.capacity),
+    source: String(row.source),
+    cancelled: flag(row.cancelled),
+    booked: num(row.booked),
+    pending: num(row.pending),
+    confirmed: num(row.confirmed),
+  };
+}
+
+const SESSION_SELECT = `
+  SELECT s.id, s.template_id, s.offering_id, o.name AS offering_name, s.location_id, l.name AS location_name,
+    s.court_id, c.name AS court_name, s.coach_id, ch.name AS coach_name, s.starts_at, s.ends_at, s.capacity,
+    s.source, s.cancelled,
+    (SELECT COUNT(*) FROM bookings b WHERE b.session_id = s.id AND b.status IN ('pending_payment','confirmed','checked_in')) AS booked,
+    (SELECT COUNT(*) FROM bookings b WHERE b.session_id = s.id AND b.status = 'pending_payment') AS pending,
+    (SELECT COUNT(*) FROM bookings b WHERE b.session_id = s.id AND b.status = 'confirmed') AS confirmed
+  FROM sessions s
+  JOIN offerings o ON o.id = s.offering_id
+  JOIN locations l ON l.id = s.location_id
+  JOIN courts c ON c.id = s.court_id
+  JOIN coaches ch ON ch.id = s.coach_id
+`;
+
+export async function openDb(url = process.env.DATABASE_URL): Promise<Db> {
+  const db = connect(url);
+  await migrate(db);
+  return db;
+}
+
+export async function academy(db: Db): Promise<Academy> {
+  const [row] = await db`SELECT * FROM academy LIMIT 1`;
+  if (!row) throw new Error("Academy not seeded");
+  return row as Academy;
+}
+
+export async function catalogs(db: Db) {
+  const [locations, courts, coaches, offerings, students] = await Promise.all([
+    db`SELECT * FROM locations ORDER BY name`,
+    db`SELECT * FROM courts ORDER BY location_id, number`,
+    db`SELECT * FROM coaches ORDER BY name`,
+    db`SELECT * FROM offerings ORDER BY capacity`,
+    db`SELECT * FROM students ORDER BY name`,
+  ]);
+  return {
+    locations: locations as Location[],
+    courts: courts as Court[],
+    coaches: coaches as Coach[],
+    offerings: offerings as Offering[],
+    students: (students as Parameters<typeof studentFrom>[0][]).map(studentFrom),
+  };
+}
+
+function toInterval(row: {
+  id: string;
+  court_id: string;
+  coach_id: string;
+  starts_at: Date | string;
+  ends_at: Date | string;
+  cancelled: unknown;
+}): SessionInterval {
   return {
     id: row.id,
     courtId: row.court_id,
     coachStaffId: row.coach_id,
     startsAt: new Date(row.starts_at),
     endsAt: new Date(row.ends_at),
-    cancelled: row.cancelled === 1,
+    cancelled: flag(row.cancelled) === 1,
   };
 }
 
-export function ensureWeek(db: Database, monday: Date): void {
-  const templates = db.query("SELECT * FROM templates").all() as {
-    id: string;
-    offering_id: string;
-    location_id: string;
-    court_id: string;
-    coach_id: string;
-    weekday: DayOfWeek;
-    start_time: string;
-    end_time: string;
-    capacity?: number;
-  }[];
-  const offerings = new Map(
-    (db.query("SELECT id, capacity FROM offerings").all() as { id: string; capacity: number }[]).map(
-      (o) => [o.id, o.capacity],
-    ),
-  );
-  const slots: WeeklyTemplateSlot[] = templates.map((t) => ({
+export async function ensureWeek(db: Db, monday: Date): Promise<void> {
+  const templates = await db`SELECT * FROM templates`;
+  const offerings = await db`SELECT id, capacity FROM offerings`;
+  const capacity = new Map((offerings as { id: string; capacity: number }[]).map((o) => [o.id, o.capacity]));
+  const slots: WeeklyTemplateSlot[] = (
+    templates as {
+      id: string;
+      offering_id: string;
+      location_id: string;
+      court_id: string;
+      coach_id: string;
+      weekday: DayOfWeek;
+      start_time: string;
+      end_time: string;
+    }[]
+  ).map((t) => ({
     id: t.id,
     offeringId: t.offering_id,
     locationId: t.location_id,
@@ -218,93 +205,58 @@ export function ensureWeek(db: Database, monday: Date): void {
     dayOfWeek: t.weekday,
     startTime: t.start_time,
     endTime: t.end_time,
-    capacity: offerings.get(t.offering_id) ?? 1,
+    capacity: capacity.get(t.offering_id) ?? 1,
   }));
   const to = addDays(mondayOf(monday), 7);
   const materialized = materializeTemplate(slots, { from: mondayOf(monday), to });
-  const insert = db.prepare(`
-    INSERT OR IGNORE INTO sessions
-      (id, template_id, offering_id, location_id, court_id, coach_id, starts_at, ends_at, capacity, source, cancelled)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-  `);
-  const tx = db.transaction(() => {
+  await db.begin(async (tx) => {
     for (const s of materialized) {
-      insert.run(
-        s.id,
-        s.templateId,
-        s.offeringId,
-        s.locationId,
-        s.courtId,
-        s.coachStaffId,
-        s.startsAt.toISOString(),
-        s.endsAt.toISOString(),
-        s.capacity,
-        s.source,
-      );
+      await tx`
+        INSERT INTO sessions (id, template_id, offering_id, location_id, court_id, coach_id, starts_at, ends_at, capacity, source, cancelled)
+        VALUES (${s.id}, ${s.templateId}, ${s.offeringId}, ${s.locationId}, ${s.courtId}, ${s.coachStaffId}, ${s.startsAt}, ${s.endsAt}, ${s.capacity}, ${s.source}, false)
+        ON CONFLICT (id) DO NOTHING
+      `;
     }
   });
-  tx();
 }
 
-export function weekSessions(db: Database, monday: Date): SessionView[] {
-  const from = mondayOf(monday).toISOString();
-  const to = addDays(mondayOf(monday), 7).toISOString();
-  return db
-    .query(
-      `
-      SELECT s.*, o.name AS offering_name, l.name AS location_name, c.name AS court_name, ch.name AS coach_name,
-        (SELECT COUNT(*) FROM bookings b WHERE b.session_id = s.id AND b.status IN ('pending_payment','confirmed','checked_in')) AS booked,
-        (SELECT COUNT(*) FROM bookings b WHERE b.session_id = s.id AND b.status = 'pending_payment') AS pending,
-        (SELECT COUNT(*) FROM bookings b WHERE b.session_id = s.id AND b.status = 'confirmed') AS confirmed
-      FROM sessions s
-      JOIN offerings o ON o.id = s.offering_id
-      JOIN locations l ON l.id = s.location_id
-      JOIN courts c ON c.id = s.court_id
-      JOIN coaches ch ON ch.id = s.coach_id
-      WHERE s.starts_at >= ? AND s.starts_at < ?
-      ORDER BY s.starts_at, l.name, c.number
-    `,
-    )
-    .all(from, to) as SessionView[];
+export async function weekSessions(db: Db, monday: Date): Promise<SessionView[]> {
+  const from = mondayOf(monday);
+  const to = addDays(from, 7);
+  const rows = await db.unsafe(`${SESSION_SELECT} WHERE s.starts_at >= $1 AND s.starts_at < $2 ORDER BY s.starts_at, l.name, c.number`, [
+    from,
+    to,
+  ]);
+  return rows.map((row) => sessionFrom(row as Record<string, unknown>));
 }
 
-export function getSession(db: Database, id: string): SessionView | null {
-  return (
-    (db
-      .query(
-        `
-      SELECT s.*, o.name AS offering_name, l.name AS location_name, c.name AS court_name, ch.name AS coach_name,
-        (SELECT COUNT(*) FROM bookings b WHERE b.session_id = s.id AND b.status IN ('pending_payment','confirmed','checked_in')) AS booked,
-        (SELECT COUNT(*) FROM bookings b WHERE b.session_id = s.id AND b.status = 'pending_payment') AS pending,
-        (SELECT COUNT(*) FROM bookings b WHERE b.session_id = s.id AND b.status = 'confirmed') AS confirmed
-      FROM sessions s
-      JOIN offerings o ON o.id = s.offering_id
-      JOIN locations l ON l.id = s.location_id
-      JOIN courts c ON c.id = s.court_id
-      JOIN coaches ch ON ch.id = s.coach_id
-      WHERE s.id = ?
-    `,
-      )
-      .get(id) as SessionView | null) ?? null
-  );
+export async function getSession(db: Db, id: string): Promise<SessionView | null> {
+  const rows = await db.unsafe(`${SESSION_SELECT} WHERE s.id = $1`, [id]);
+  const row = rows[0];
+  return row ? sessionFrom(row as Record<string, unknown>) : null;
 }
 
-export function sessionBookings(db: Database, sessionId: string): BookingView[] {
-  return db
-    .query(
-      `
-      SELECT b.id, b.session_id, b.student_id, st.name AS student_name, b.status
-      FROM bookings b
-      JOIN students st ON st.id = b.student_id
-      WHERE b.session_id = ?
-      ORDER BY st.name
-    `,
-    )
-    .all(sessionId) as BookingView[];
+export async function sessionBookings(db: Db, sessionId: string): Promise<BookingView[]> {
+  const rows = await db`
+    SELECT b.id, b.session_id, b.student_id, st.name AS student_name, b.status, st.category, st.side
+    FROM bookings b
+    JOIN students st ON st.id = b.student_id
+    WHERE b.session_id = ${sessionId}
+    ORDER BY st.name
+  `;
+  return rows.map((row) => ({
+    id: String(row.id),
+    session_id: String(row.session_id),
+    student_id: String(row.student_id),
+    student_name: String(row.student_name),
+    status: row.status as BookingStatus,
+    category: parseCategory(String(row.category)),
+    side: parseSide(row.side as string | null),
+  }));
 }
 
-export function createSession(
-  db: Database,
+export async function createSession(
+  db: Db,
   input: {
     offeringId: string;
     courtId: string;
@@ -312,121 +264,134 @@ export function createSession(
     startsAt: Date;
     dayWindow: { from: Date; to: Date };
   },
-): string {
-  const offering = db.query("SELECT * FROM offerings WHERE id = ?").get(input.offeringId) as Offering | null;
-  const court = db.query("SELECT * FROM courts WHERE id = ?").get(input.courtId) as Court | null;
+): Promise<string> {
+  const [offering] = await db`SELECT * FROM offerings WHERE id = ${input.offeringId}`;
+  const [court] = await db`SELECT * FROM courts WHERE id = ${input.courtId}`;
   if (!offering || !court) throw new Error("Offering o pista inexistente");
-  const endsAt = new Date(input.startsAt.getTime() + offering.duration_minutes * 60_000);
-  const existing = db
-    .query("SELECT id, court_id, coach_id, starts_at, ends_at, cancelled FROM sessions WHERE starts_at >= ? AND starts_at < ?")
-    .all(input.dayWindow.from.toISOString(), input.dayWindow.to.toISOString()) as {
-    id: string;
-    court_id: string;
-    coach_id: string;
-    starts_at: string;
-    ends_at: string;
-    cancelled: number;
-  }[];
+  const off = offering as Offering;
+  const ct = court as Court;
+  const endsAt = new Date(input.startsAt.getTime() + off.duration_minutes * 60_000);
+  const existing = await db`
+    SELECT id, court_id, coach_id, starts_at, ends_at, cancelled
+    FROM sessions
+    WHERE starts_at >= ${input.dayWindow.from} AND starts_at < ${input.dayWindow.to}
+  `;
   const id = crypto.randomUUID();
   assertNoOverlap(
     {
       id,
-      courtId: court.id,
+      courtId: ct.id,
       coachStaffId: input.coachId,
       startsAt: input.startsAt,
       endsAt,
     },
-    existing.map(toInterval),
+    (existing as Parameters<typeof toInterval>[0][]).map(toInterval),
   );
-  db.query(
-    `
+  await db`
     INSERT INTO sessions (id, template_id, offering_id, location_id, court_id, coach_id, starts_at, ends_at, capacity, source, cancelled)
-    VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 'one_off', 0)
-  `,
-  ).run(
-    id,
-    offering.id,
-    court.location_id,
-    court.id,
-    input.coachId,
-    input.startsAt.toISOString(),
-    endsAt.toISOString(),
-    offering.capacity,
-  );
+    VALUES (${id}, null, ${off.id}, ${ct.location_id}, ${ct.id}, ${input.coachId}, ${input.startsAt}, ${endsAt}, ${off.capacity}, 'one_off', false)
+  `;
   return id;
 }
 
-export function cancelSession(db: Database, id: string): void {
-  db.query("UPDATE sessions SET cancelled = 1, source = 'exception' WHERE id = ?").run(id);
+export async function cancelSession(db: Db, id: string): Promise<void> {
+  await db`UPDATE sessions SET cancelled = true, source = 'exception' WHERE id = ${id}`;
 }
 
-export function findOrCreateStudent(db: Database, name: string, phone: string): Student {
+export async function findOrCreateStudent(
+  db: Db,
+  name: string,
+  phone: string,
+  extra?: { category?: StudentCategory; side?: PlayingSide | null },
+): Promise<Student> {
   const trimmedName = name.trim();
   const trimmedPhone = phone.trim();
   if (!trimmedName || !trimmedPhone) throw new Error("Nombre y teléfono son obligatorios");
-  const existing = db.query("SELECT * FROM students WHERE phone = ?").get(trimmedPhone) as Student | null;
+  const [existing] = await db`SELECT * FROM students WHERE phone = ${trimmedPhone}`;
   if (existing) {
-    if (existing.name !== trimmedName) {
-      db.query("UPDATE students SET name = ? WHERE id = ?").run(trimmedName, existing.id);
-      return { ...existing, name: trimmedName };
+    const row = studentFrom(existing as Parameters<typeof studentFrom>[0]);
+    const category = extra?.category ?? row.category;
+    const side = extra?.side === undefined ? row.side : extra.side;
+    if (row.name !== trimmedName || category !== row.category || side !== row.side) {
+      await db`UPDATE students SET name = ${trimmedName}, category = ${category}, side = ${side} WHERE id = ${row.id}`;
+      return { ...row, name: trimmedName, category, side };
     }
-    return existing;
+    return row;
   }
-  const student: Student = { id: crypto.randomUUID(), name: trimmedName, phone: trimmedPhone };
-  db.query("INSERT INTO students (id, name, phone) VALUES (?, ?, ?)").run(student.id, student.name, student.phone);
+  const student: Student = {
+    id: crypto.randomUUID(),
+    name: trimmedName,
+    phone: trimmedPhone,
+    category: extra?.category ?? "beginner",
+    side: extra?.side ?? null,
+  };
+  await db`
+    INSERT INTO students (id, name, phone, category, side)
+    VALUES (${student.id}, ${student.name}, ${student.phone}, ${student.category}, ${student.side})
+  `;
   return student;
 }
 
-export function bookStudent(
-  db: Database,
+export async function updateStudent(
+  db: Db,
+  id: string,
+  patch: { name?: string; category?: StudentCategory; side?: PlayingSide | null },
+): Promise<void> {
+  const [row] = await db`SELECT * FROM students WHERE id = ${id}`;
+  if (!row) throw new Error("Alumno inexistente");
+  const current = studentFrom(row as Parameters<typeof studentFrom>[0]);
+  const name = patch.name?.trim() || current.name;
+  const category = patch.category ?? current.category;
+  const side = patch.side === undefined ? current.side : patch.side;
+  await db`UPDATE students SET name = ${name}, category = ${category}, side = ${side} WHERE id = ${id}`;
+}
+
+export async function bookStudent(
+  db: Db,
   sessionId: string,
   studentId: string,
   channel: "admin" | "web" = "admin",
-): BookingStatus {
-  const session = db.query("SELECT * FROM sessions WHERE id = ?").get(sessionId) as {
-    id: string;
-    capacity: number;
-    cancelled: number;
-  } | null;
-  if (!session || session.cancelled) throw new Error("Sesión inexistente o cancelada");
-  const existing = db
-    .query("SELECT status FROM bookings WHERE session_id = ?")
-    .all(sessionId) as { status: BookingStatus }[];
-  const already = db
-    .query("SELECT id FROM bookings WHERE session_id = ? AND student_id = ?")
-    .get(sessionId, studentId);
+): Promise<BookingStatus> {
+  const [session] = await db`SELECT id, capacity, cancelled FROM sessions WHERE id = ${sessionId}`;
+  if (!session || flag(session.cancelled)) throw new Error("Sesión inexistente o cancelada");
+  const existing = await db`SELECT status FROM bookings WHERE session_id = ${sessionId}`;
+  const [already] = await db`SELECT id FROM bookings WHERE session_id = ${sessionId} AND student_id = ${studentId}`;
   if (already) throw new Error("Ese alumno ya está en la clase");
-  const status = nextBookingStatus(session.capacity, existing);
+  const status = nextBookingStatus(
+    num(session.capacity),
+    existing as { status: BookingStatus }[],
+  );
   if (channel === "web" && status === "waitlisted") {
     throw new Error("Clase completa");
   }
-  db.query("INSERT INTO bookings (id, session_id, student_id, status, channel) VALUES (?, ?, ?, ?, ?)").run(
-    crypto.randomUUID(),
-    sessionId,
-    studentId,
-    status,
-    channel,
-  );
+  await db`
+    INSERT INTO bookings (id, session_id, student_id, status, channel)
+    VALUES (${crypto.randomUUID()}, ${sessionId}, ${studentId}, ${status}, ${channel})
+  `;
   return status;
 }
 
-export function publicBook(db: Database, sessionId: string, name: string, phone: string): BookingStatus {
-  const session = db.query("SELECT starts_at, cancelled FROM sessions WHERE id = ?").get(sessionId) as
-    | { starts_at: string; cancelled: number }
-    | null;
-  if (!session || session.cancelled) throw new Error("Sesión inexistente o cancelada");
-  if (new Date(session.starts_at) < new Date()) throw new Error("Ese horario ya pasó");
-  const student = findOrCreateStudent(db, name, phone);
+export async function publicBook(
+  db: Db,
+  sessionId: string,
+  name: string,
+  phone: string,
+  extra?: { category?: StudentCategory; side?: PlayingSide | null },
+): Promise<BookingStatus> {
+  const [session] = await db`SELECT starts_at, cancelled FROM sessions WHERE id = ${sessionId}`;
+  if (!session || flag(session.cancelled)) throw new Error("Sesión inexistente o cancelada");
+  if (new Date(iso(session.starts_at)) < new Date()) throw new Error("Ese horario ya pasó");
+  const student = await findOrCreateStudent(db, name, phone, extra);
   return bookStudent(db, sessionId, student.id, "web");
 }
 
-export function buyPack(
-  db: Database,
+export async function buyPack(
+  db: Db,
   studentId: string,
   offeringKind: ClassPack["offeringKind"],
   size: PackSize = 10,
   at = new Date(),
-): ClassPack {
+): Promise<ClassPack> {
   const pack = newPack({
     id: crypto.randomUUID(),
     studentId,
@@ -434,17 +399,10 @@ export function buyPack(
     size,
     purchasedAt: at,
   });
-  db.query(
-    "INSERT INTO packs (id, student_id, offering_kind, size, remaining, purchased_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-  ).run(
-    pack.id,
-    pack.studentId,
-    pack.offeringKind,
-    pack.size,
-    pack.remaining,
-    pack.purchasedAt.toISOString(),
-    pack.expiresAt.toISOString(),
-  );
+  await db`
+    INSERT INTO packs (id, student_id, offering_kind, size, remaining, purchased_at, expires_at)
+    VALUES (${pack.id}, ${pack.studentId}, ${pack.offeringKind}, ${pack.size}, ${pack.remaining}, ${pack.purchasedAt}, ${pack.expiresAt})
+  `;
   return pack;
 }
 
@@ -454,81 +412,76 @@ function packFromRow(row: {
   offering_kind: ClassPack["offeringKind"];
   size: PackSize;
   remaining: number;
-  purchased_at: string;
-  expires_at: string;
+  purchased_at: Date | string;
+  expires_at: Date | string;
 }): ClassPack {
   return {
     id: row.id,
     studentId: row.student_id,
     offeringKind: row.offering_kind,
-    size: row.size,
-    remaining: row.remaining,
+    size: Number(row.size) as PackSize,
+    remaining: num(row.remaining),
     purchasedAt: new Date(row.purchased_at),
     expiresAt: new Date(row.expires_at),
   };
 }
 
-export function activePack(
-  db: Database,
+export async function activePack(
+  db: Db,
   studentId: string,
   kind: ClassPack["offeringKind"],
   at = new Date(),
-): ClassPack | null {
-  const row = db
-    .query(
-      "SELECT * FROM packs WHERE student_id = ? AND offering_kind = ? AND remaining > 0 AND expires_at >= ? ORDER BY purchased_at LIMIT 1",
-    )
-    .get(studentId, kind, at.toISOString()) as Parameters<typeof packFromRow>[0] | null;
-  return row ? packFromRow(row) : null;
+): Promise<ClassPack | null> {
+  const [row] = await db`
+    SELECT * FROM packs
+    WHERE student_id = ${studentId} AND offering_kind = ${kind} AND remaining > 0 AND expires_at >= ${at}
+    ORDER BY purchased_at
+    LIMIT 1
+  `;
+  return row ? packFromRow(row as Parameters<typeof packFromRow>[0]) : null;
 }
 
-function saveAlert(db: Database, alert: PackAlert, at: Date): void {
-  db.query(
-    "INSERT INTO pack_alerts (id, student_id, pack_id, remaining, total, buy_again, message, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-  ).run(
-    crypto.randomUUID(),
-    alert.studentId,
-    alert.packId,
-    alert.remaining,
-    alert.total,
-    alert.buyAgain ? 1 : 0,
-    alert.message,
-    at.toISOString(),
-  );
+async function saveAlert(db: Db, alert: PackAlert, at: Date): Promise<void> {
+  await db`
+    INSERT INTO pack_alerts (id, student_id, pack_id, remaining, total, buy_again, message, created_at)
+    VALUES (${crypto.randomUUID()}, ${alert.studentId}, ${alert.packId}, ${alert.remaining}, ${alert.total}, ${alert.buyAgain}, ${alert.message}, ${at})
+  `;
 }
 
-export function studentAlerts(db: Database, studentId: string): { message: string; remaining: number; buy_again: number }[] {
-  return db
-    .query("SELECT message, remaining, buy_again FROM pack_alerts WHERE student_id = ? ORDER BY created_at")
-    .all(studentId) as { message: string; remaining: number; buy_again: number }[];
+export async function studentAlerts(
+  db: Db,
+  studentId: string,
+): Promise<{ message: string; remaining: number; buy_again: number }[]> {
+  const rows = await db`
+    SELECT message, remaining, buy_again FROM pack_alerts WHERE student_id = ${studentId} ORDER BY created_at
+  `;
+  return rows.map((row) => ({
+    message: String(row.message),
+    remaining: num(row.remaining),
+    buy_again: flag(row.buy_again),
+  }));
 }
 
-export function setBookingStatus(db: Database, bookingId: string, status: BookingStatus): PackAlert | null {
-  const booking = db
-    .query("SELECT id, session_id, student_id, status, pack_id FROM bookings WHERE id = ?")
-    .get(bookingId) as
-    | { id: string; session_id: string; student_id: string; status: BookingStatus; pack_id: string | null }
-    | null;
+export async function setBookingStatus(db: Db, bookingId: string, status: BookingStatus): Promise<PackAlert | null> {
+  const [booking] = await db`SELECT id, session_id, student_id, status, pack_id FROM bookings WHERE id = ${bookingId}`;
   if (!booking) throw new Error("Reserva inexistente");
   if (status !== "confirmed" || booking.status === "confirmed") {
-    db.query("UPDATE bookings SET status = ? WHERE id = ?").run(status, bookingId);
+    await db`UPDATE bookings SET status = ${status} WHERE id = ${bookingId}`;
     return null;
   }
-  const session = db.query("SELECT capacity FROM sessions WHERE id = ?").get(booking.session_id) as
-    | { capacity: number }
-    | null;
+  const [session] = await db`SELECT capacity FROM sessions WHERE id = ${booking.session_id as string}`;
   if (!session) throw new Error("Sesión inexistente");
-  const kind = offeringKindFromCapacity(session.capacity);
-  const pack = activePack(db, booking.student_id, kind);
+  const kind = offeringKindFromCapacity(num(session.capacity));
+  const pack = await activePack(db, String(booking.student_id), kind);
   if (!pack) {
-    db.query("UPDATE bookings SET status = ? WHERE id = ?").run(status, bookingId);
+    await db`UPDATE bookings SET status = ${status} WHERE id = ${bookingId}`;
     return null;
   }
   const now = new Date();
   const { pack: next, alert } = consumeOnConfirm(pack, now, kind);
-  db.query("UPDATE packs SET remaining = ? WHERE id = ?").run(next.remaining, next.id);
-  db.query("UPDATE bookings SET status = ?, pack_id = ? WHERE id = ?").run(status, next.id, bookingId);
-  saveAlert(db, alert, now);
+  await db`UPDATE packs SET remaining = ${next.remaining} WHERE id = ${next.id}`;
+  await db`UPDATE bookings SET status = ${status}, pack_id = ${next.id} WHERE id = ${bookingId}`;
+  await saveAlert(db, alert, now);
   return alert;
 }
 

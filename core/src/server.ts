@@ -12,19 +12,31 @@ import {
   openDb,
   sessionBookings,
   setBookingStatus,
+  updateStudent,
   weekSessions,
 } from "./db";
-import { pickProfePage, pickSedePage, placeholderBookPage, placeholderWeekPage, gridPage, sessionPage, pilotoPage } from "./html";
+import {
+  pickProfePage,
+  pickSedePage,
+  placeholderBookPage,
+  placeholderWeekPage,
+  gridPage,
+  sessionPage,
+  pilotoPage,
+  alumnosPage,
+} from "./html";
 import { PLACEHOLDER_PROFES, PLACEHOLDER_SEDES, findProfe, findSede } from "./placeholders";
-import { seedIfEmpty } from "./seed";
+import { seedIfEmpty, alignCatalog } from "./seed";
 import type { BookingStatus } from "./domain/types";
+import { parseCategory, parseSide } from "./domain/student";
 import { TpagoClient, configFromEnv, handleTpagoHook } from "./payments/tpago";
 import { configFromEnv as whatsappConfig, notifyReservation } from "./notify/whatsapp";
 import { pilotoReserva } from "./piloto";
 import type { PackAlert } from "./domain/pack";
 
-const db = openDb();
-seedIfEmpty(db);
+const db = await openDb();
+await seedIfEmpty(db);
+await alignCatalog(db);
 
 const PORT = Number(process.env.PORT ?? 3000);
 const tpago = new TpagoClient(configFromEnv());
@@ -35,11 +47,9 @@ async function sendPackAlert(phone: string, alert: PackAlert | null) {
   return notifyReservation(wa, phone, alert.message);
 }
 
-function studentPhone(bookingId: string): string | null {
-  const row = db
-    .query("SELECT s.phone AS phone FROM bookings b JOIN students s ON s.id = b.student_id WHERE b.id = ?")
-    .get(bookingId) as { phone: string } | null;
-  return row?.phone ?? null;
+async function studentPhone(bookingId: string): Promise<string | null> {
+  const [row] = await db`SELECT s.phone AS phone FROM bookings b JOIN students s ON s.id = b.student_id WHERE b.id = ${bookingId}`;
+  return row ? String(row.phone) : null;
 }
 
 function parseWeek(url: URL): { monday: Date; day: number } {
@@ -95,8 +105,8 @@ Bun.serve({
       return handleTpagoHook(req);
     }
     const { monday, day } = parseWeek(url);
-    ensureWeek(db, monday);
-    const ac = academy(db);
+    await ensureWeek(db, monday);
+    const ac = await academy(db);
     const flash = flashOf(url);
     if (req.method === "GET" && url.pathname === "/piloto") {
       return html(pilotoPage(ac, flash));
@@ -105,17 +115,28 @@ Bun.serve({
       const type = req.headers.get("content-type") ?? "";
       let name = "";
       let phone = "";
+      let category = "beginner";
+      let side = "";
       if (type.includes("application/json")) {
-        const body = (await req.json()) as { name?: string; phone?: string };
+        const body = (await req.json()) as { name?: string; phone?: string; category?: string; side?: string };
         name = body.name ?? "";
         phone = body.phone ?? "";
+        category = body.category ?? "beginner";
+        side = body.side ?? "";
       } else {
         const form = await readForm(req);
         name = form.get("name") ?? "";
         phone = form.get("phone") ?? "";
+        category = form.get("category") ?? "beginner";
+        side = form.get("side") ?? "";
       }
       try {
-        const result = pilotoReserva(db, { name, phone });
+        const result = await pilotoReserva(db, {
+          name,
+          phone,
+          category: parseCategory(category),
+          side: parseSide(side),
+        });
         const sent = await sendPackAlert(phone, result.alert);
         const whatsapp = sent.ok
           ? sent.channel === "dry-run"
@@ -149,14 +170,32 @@ Bun.serve({
         return html(pilotoPage(ac, { error: msg }));
       }
     }
+    if (req.method === "GET" && url.pathname === "/alumnos") {
+      const cat = await catalogs(db);
+      return html(alumnosPage(ac, cat.students, flash));
+    }
+    if (req.method === "POST" && url.pathname === "/alumnos") {
+      const form = await readForm(req);
+      try {
+        await updateStudent(db, form.get("id") ?? "", {
+          name: form.get("name") ?? undefined,
+          category: parseCategory(form.get("category")),
+          side: parseSide(form.get("side")),
+        });
+        return redirect("/alumnos", { ok: "Alumno actualizado." });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Error";
+        return redirect("/alumnos", { error: msg });
+      }
+    }
     if (req.method === "GET" && url.pathname === "/") {
-      const cat = catalogs(db);
+      const cat = await catalogs(db);
       return html(
         gridPage({
           academy: ac,
           monday,
           dayOffset: day,
-          sessions: weekSessions(db, monday),
+          sessions: await weekSessions(db, monday),
           ...cat,
           flash,
         }),
@@ -210,14 +249,15 @@ Bun.serve({
 
     const sessionMatch = url.pathname.match(/^\/sesiones\/([^/]+)$/);
     if (req.method === "GET" && sessionMatch) {
-      const row = getSession(db, decodeURIComponent(sessionMatch[1]));
+      const row = await getSession(db, decodeURIComponent(sessionMatch[1]));
       if (!row) return new Response("No encontrada", { status: 404 });
+      const cat = await catalogs(db);
       return html(
         sessionPage({
           academy: ac,
           session: row,
-          bookings: sessionBookings(db, row.id),
-          students: catalogs(db).students,
+          bookings: await sessionBookings(db, row.id),
+          students: cat.students,
           week: url.searchParams.get("week") ?? monday.toISOString().slice(0, 10),
           day,
           flash,
@@ -236,7 +276,7 @@ Bun.serve({
         const startsAt = addDays(mondayOf(new Date(`${week}T00:00:00.000Z`)), dayOffset);
         startsAt.setUTCHours(h, m, 0, 0);
         const weekStart = mondayOf(startsAt);
-        createSession(db, {
+        await createSession(db, {
           offeringId: form.get("offering_id") ?? "",
           courtId: form.get("court_id") ?? "",
           coachId: form.get("coach_id") ?? "",
@@ -260,7 +300,7 @@ Bun.serve({
     const cancelMatch = url.pathname.match(/^\/sesiones\/([^/]+)\/cancelar$/);
     if (req.method === "POST" && cancelMatch) {
       const form = await readForm(req);
-      cancelSession(db, decodeURIComponent(cancelMatch[1]));
+      await cancelSession(db, decodeURIComponent(cancelMatch[1]));
       return redirect(weekQuery(form), { ok: "Clase cancelada. La planilla madre no cambia." });
     }
 
@@ -272,7 +312,7 @@ Bun.serve({
       const d = form.get("day") ?? "0";
       const here = `/sesiones/${id}?week=${encodeURIComponent(week)}&day=${encodeURIComponent(d)}`;
       try {
-        const status = bookStudent(db, id, form.get("student_id") ?? "");
+        const status = await bookStudent(db, id, form.get("student_id") ?? "");
         const ok =
           status === "waitlisted" ? "Lista de espera." : "Reserva pendiente de pago.";
         return redirect(here, { ok });
@@ -287,14 +327,12 @@ Bun.serve({
       const form = await readForm(req);
       const bookingId = decodeURIComponent(payMatch[1]);
       const status = (form.get("status") ?? "confirmed") as BookingStatus;
-      const alert = setBookingStatus(db, bookingId, status);
+      const alert = await setBookingStatus(db, bookingId, status);
       const week = form.get("week") ?? "";
       const d = form.get("day") ?? "0";
-      const booking = db.query("SELECT session_id FROM bookings WHERE id = ?").get(bookingId) as
-        | { session_id: string }
-        | null;
-      const sid = booking?.session_id ?? "";
-      const phone = studentPhone(bookingId);
+      const [booking] = await db`SELECT session_id FROM bookings WHERE id = ${bookingId}`;
+      const sid = booking ? String(booking.session_id) : "";
+      const phone = await studentPhone(bookingId);
       if (phone) await sendPackAlert(phone, alert);
       const ok =
         alert?.message ??

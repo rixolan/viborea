@@ -9,19 +9,24 @@ Bandeja es un fork de [Tandava](https://github.com/TaylorONeal/tandava) (AGPL-3.
 No es alquiler de canchas al público. No es “reservá 30 minutos conmigo”.
 
 
-## MVP (Bun)
+## MVP (Bun + Postgres)
 
-El producto usable está en `core/`: runtime Bun, SQLite, HTML + Tailwind. Sin React. Admin en `/`. Enlace para alumnos: `/reservar`.
+El producto usable está en `core/`: runtime Bun, Postgres 18, HTML + Tailwind. Sin React. Admin en `/`. Alumnos en `/alumnos`. Enlace público: `/reservar`.
 
 ```bash
-bun install
-bun run dev
+docker compose up --build
 ```
 
-Abre `http://localhost:3000`.
+Abre `http://localhost:3000`. Postgres no se publica fuera de `127.0.0.1`. En Dokploy: mismo `compose.yaml`, password en `POSTGRES_PASSWORD`.
+
+Solo la base, para `bun --hot` en local:
+
+```bash
+docker compose up -d db
+DATABASE_URL=postgres://bandeja:bandeja@127.0.0.1:5432/bandeja bun run dev
+```
 
 `bun run dev` arranca **core**, no Vite. El árbol raíz sigue siendo el fork de Tandava (referencia de dominio, AGPL). Para esa SPA: `bun run dev:fork` → `http://localhost:8080`.
-
 ---
 
 ## Fork Tandava (referencia)
