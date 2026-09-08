@@ -1,6 +1,6 @@
 {
-  "name": "Bandeja",
-  "short_name": "Bandeja",
+  "name": "Viborea",
+  "short_name": "Viborea",
   "description": "Gestión de academias de pádel. Grilla, packs, cobro adelantado.",
   "start_url": "/",
   "display": "standalone",

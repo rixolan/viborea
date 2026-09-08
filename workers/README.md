@@ -1,6 +1,6 @@
 # Workers
 
-Small edge services that sit next to Bandeja. They are not the schedule engine (`core/`).
+Small edge services that sit next to Viborea. They are not the schedule engine (`core/`).
 
 | Package | Role |
 | --- | --- |

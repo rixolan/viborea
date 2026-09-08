@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@bandeja/chatwoot-agent-bot",
+      "name": "@viborea/chatwoot-agent-bot",
       "devDependencies": {
         "wrangler": "^4.128.0",
       },

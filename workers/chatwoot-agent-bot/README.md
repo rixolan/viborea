@@ -1,6 +1,6 @@
-# Chatwoot AgentBot — Bandeja
+# Chatwoot AgentBot — Viborea
 
-Source: [`workers/chatwoot-agent-bot`](https://github.com/rixolan/bandeja/tree/main/workers/chatwoot-agent-bot) in [rixolan/bandeja](https://github.com/rixolan/bandeja).
+Source: [`workers/chatwoot-agent-bot`](https://github.com/rixolan/viborea/tree/main/workers/chatwoot-agent-bot) in [rixolan/viborea](https://github.com/rixolan/viborea).
 
 Cloudflare Worker that answers a Chatwoot Community Edition inbox with a WhatsApp list:
 
@@ -52,11 +52,11 @@ Then put the Worker URL on a Chatwoot AgentBot and attach it to the inbox:
 CHATWOOT_BASE_URL=https://your-chatwoot.example.com \
 CHATWOOT_ACCESS_TOKEN=... \
 CHATWOOT_INBOX_ID=2 \
-OUTGOING_URL=https://bandeja-chatwoot-bot.<account>.workers.dev \
+OUTGOING_URL=https://viborea-chatwoot-bot.<account>.workers.dev \
 bun run register
 ```
 
-`GET` on the Worker URL returns `bandeja chatwoot bot ok`.
+`GET` on the Worker URL returns `viborea chatwoot bot ok`.
 
 ## Configuration
 

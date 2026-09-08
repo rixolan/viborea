@@ -2,7 +2,7 @@
 
 Commit de origen: `8d93c0d` (`main` de [TaylorONeal/tandava](https://github.com/TaylorONeal/tandava)). Remote `upstream` apunta ahí. Licencia AGPL-3.0. Copyright (C) 2024-2026 Tandava Contributors.
 
-Este documento describe **qué hay en Tandava**, no el modelo Bandeja. Ver [DOMINIO-BANDEJA.md](./DOMINIO-BANDEJA.md).
+Este documento describe **qué hay en Tandava**, no el modelo Viborea. Ver [DOMINIO-VIBOREA.md](./DOMINIO-VIBOREA.md).
 
 ## Qué es
 
@@ -66,14 +66,14 @@ Demo y live no se mezclan en runtime (`DemoContext`).
 - Identidad: “Mystical Night”, Oxatl Yoga, Tandava, yoga/pilates/waivers/200h TT, tips, reviews.
 - `formatCents` divide siempre por 100. PYG (exponente 0) quedaría mal.
 
-## Deudas relevantes para Bandeja
+## Deudas relevantes para Viborea
 
 1. Pista no es entidad. `room` es etiqueta.
 2. Booking no tiene `pending_payment` ni `channel`.
 3. Solape de profe/pista no se valida (ni JS ni Postgres).
 4. Plantilla semanal existe (`schedule_rules`) pero la UI admin no la materializa; el mock no pasa por el motor.
 5. Entitlement se consume en la **confirmación** del booking cubierto, no en el check-in. Drop-in iba por Stripe.
-6. Payroll, tips, on-demand, campaigns, inbox SMS: código presente; payroll de profes está fuera de v1 Bandeja.
+6. Payroll, tips, on-demand, campaigns, inbox SMS: código presente; payroll de profes está fuera de v1 Viborea.
 7. Tests unitarios mínimos (`entitlements`, connectors, studio econ). Casi nada de motor de agenda.
 8. Exportes: principio de primera clase (`DATA_INTEROPERABILITY.md`, jobs de export en schema). No perderlos.
 

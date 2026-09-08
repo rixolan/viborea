@@ -1,5 +1,5 @@
 {
-  "name": "bandeja-chatwoot-bot",
+  "name": "viborea-chatwoot-bot",
   "account_id": "707c4355e033f613ab2ba527f1d8e811",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-08",

@@ -61,7 +61,7 @@ export function layout(
   kind: "admin" | "public" = "admin",
   publicStep?: 1 | 2 | 3,
 ): string {
-  const brand = kind === "public" ? esc(academy.name) : "Bandeja";
+  const brand = kind === "public" ? esc(academy.name) : "Viborea";
   const brandHref = kind === "public" ? "/reservar" : "/";
   const extra =
     kind === "admin"

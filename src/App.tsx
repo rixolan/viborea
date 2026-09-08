@@ -28,7 +28,7 @@ class AppErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("[Bandeja] Render crash:", error, info.componentStack);
+    console.error("[Viborea] Render crash:", error, info.componentStack);
   }
 
   render() {
@@ -37,7 +37,7 @@ class AppErrorBoundary extends Component<
         <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0f0a14", color: "#f5f0e8", fontFamily: "'DM Sans', sans-serif", padding: "2rem" }}>
           <div style={{ maxWidth: "32rem", textAlign: "center" }}>
             <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "2rem", marginBottom: "1rem" }}>Algo salió mal</h1>
-            <p style={{ opacity: 0.7, marginBottom: "1.5rem" }}>Bandeja encontró un error al arrancar.</p>
+            <p style={{ opacity: 0.7, marginBottom: "1.5rem" }}>Viborea encontró un error al arrancar.</p>
             <pre style={{ textAlign: "left", background: "rgba(255,255,255,0.05)", padding: "1rem", borderRadius: "0.5rem", fontSize: "0.75rem", overflow: "auto", maxHeight: "12rem", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
               {this.state.error.message}
               {"\n\n"}

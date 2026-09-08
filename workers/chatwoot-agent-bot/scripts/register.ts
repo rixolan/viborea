@@ -5,7 +5,7 @@
  *   CHATWOOT_ACCESS_TOKEN=... \
  *   CHATWOOT_ACCOUNT_ID=1 \
  *   CHATWOOT_INBOX_ID=2 \
- *   OUTGOING_URL=https://bandeja-chatwoot-bot.<subdomain>.workers.dev \
+ *   OUTGOING_URL=https://viborea-chatwoot-bot.<subdomain>.workers.dev \
  *   bun run scripts/register.ts
  */
 const base = required("CHATWOOT_BASE_URL").replace(/\/$/, "");
@@ -13,7 +13,7 @@ const token = required("CHATWOOT_ACCESS_TOKEN");
 const accountId = process.env.CHATWOOT_ACCOUNT_ID ?? "1";
 const inboxId = required("CHATWOOT_INBOX_ID");
 const outgoingUrl = required("OUTGOING_URL");
-const name = process.env.AGENT_BOT_NAME ?? "Bandeja";
+const name = process.env.AGENT_BOT_NAME ?? "Viborea";
 
 const headers = {
   api_access_token: token,

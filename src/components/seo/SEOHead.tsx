@@ -1,7 +1,7 @@
 import { Helmet } from "react-helmet-async";
 
 interface SEOHeadProps {
-  /** Page title — will be appended with " | Bandeja" */
+  /** Page title — will be appended with " | Viborea" */
   title?: string;
   /** Meta description (max ~155 characters for search results) */
   description?: string;
@@ -18,10 +18,10 @@ interface SEOHeadProps {
 }
 
 const DEFAULTS = {
-  siteName: import.meta.env.VITE_APP_NAME || "Bandeja",
+  siteName: import.meta.env.VITE_APP_NAME || "Viborea",
   siteUrl: import.meta.env.VITE_APP_URL || "https://localhost:8080",
   defaultDescription:
-    "Bandeja controla la grilla de una academia de pádel: sede, pista, entrenador y cobro adelantado.",
+    "Viborea controla la grilla de una academia de pádel: sede, pista, entrenador y cobro adelantado.",
   defaultImage: "/og-image.png",
   twitterHandle: "",
 };

@@ -1,4 +1,4 @@
--- Bandeja: Court as a scarce resource on Session.
+-- Viborea: Court as a scarce resource on Session.
 --
 -- class_occurrence grain is unchanged (one offering instance at one interval).
 -- court_id is the same kind of resource FK as teacher_id.
@@ -78,7 +78,7 @@ COMMENT ON COLUMN class_occurrences.court_id IS
 COMMENT ON COLUMN class_occurrences.source IS
   'template = materialized from schedule_rules; exception = edited/cancelled instance; one_off = not from a template.';
 COMMENT ON COLUMN class_occurrences.schedule_rule_id IS
-  'Template this occurrence was materialized from (Bandeja template_id).';
+  'Template this occurrence was materialized from (Viborea template_id).';
 
 -- ============================================================================
 -- STUDIO LOCALE

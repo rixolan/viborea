@@ -107,7 +107,7 @@ export function ManageLayout({ children }: ManageLayoutProps) {
                 <span className="text-sm font-bold text-primary-foreground">B</span>
               </div>
               <div className="hidden sm:block">
-                <p className="text-sm font-semibold leading-none">Bandeja</p>
+                <p className="text-sm font-semibold leading-none">Viborea</p>
                 <p className="text-xs text-muted-foreground">{t('studioManagement')}</p>
               </div>
             </Link>

@@ -61,7 +61,7 @@ function parseWeek(url: URL): { monday: Date; day: number } {
 }
 
 function redirect(path: string, flash?: { ok?: string; error?: string }): Response {
-  const u = new URL(path, "http://bandeja.local");
+  const u = new URL(path, "http://viborea.local");
   if (flash?.ok) u.searchParams.set("ok", flash.ok);
   if (flash?.error) u.searchParams.set("error", flash.error);
   return new Response(null, { status: 303, headers: { Location: `${u.pathname}${u.search}` } });
@@ -344,4 +344,4 @@ Bun.serve({
   },
 });
 
-console.log(`Bandeja http://localhost:${PORT}`);
+console.log(`Viborea http://localhost:${PORT}`);

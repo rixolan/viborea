@@ -1,5 +1,5 @@
 /**
- * Demo academy — fictional padel club for Bandeja.
+ * Demo academy — fictional padel club for Viborea.
  * Not Academia DG. Not a real tenant.
  */
 

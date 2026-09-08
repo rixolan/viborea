@@ -104,7 +104,7 @@ describe("TPago protocol", () => {
 
   it("hook always acks success so TPago does not reverse", async () => {
     const res = await handleTpagoHook(
-      new Request("http://bandeja.local/hooks/tpago", {
+      new Request("http://viborea.local/hooks/tpago", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -115,7 +115,7 @@ describe("TPago protocol", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: "success" });
     const bad = await handleTpagoHook(
-      new Request("http://bandeja.local/hooks/tpago", { method: "POST", body: "nope" }),
+      new Request("http://viborea.local/hooks/tpago", { method: "POST", body: "nope" }),
     );
     expect(await bad.json()).toEqual({ status: "success" });
   });

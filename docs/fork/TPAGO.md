@@ -4,7 +4,7 @@ Fuente: [tpagodocs.bancard.com.py](https://tpagodocs.bancard.com.py/) v3.16.0 (2
 
 No keys de producción. Sandbox: `https://comercios.bancard.com.py:8888`. Producción: `https://comercios.bancard.com.py` (callbacks en **443**).
 
-La API cobra en **guaraníes enteros** (ISO 4217 PYG, exponente 0, código `600`). El schema de Bandeja sigue siendo `amount` + `currency`. El adaptador traduce; no guardamos “Gs.”.
+La API cobra en **guaraníes enteros** (ISO 4217 PYG, exponente 0, código `600`). El schema de Viborea sigue siendo `amount` + `currency`. El adaptador traduce; no guardamos “Gs.”.
 
 ## Flujo (v1: link de pago, no suscripción)
 

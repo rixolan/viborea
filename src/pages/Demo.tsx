@@ -1,5 +1,5 @@
 /**
- * Demo landing — Bandeja
+ * Demo landing — Viborea
  */
 
 import { useState } from "react";
@@ -139,14 +139,14 @@ interface FAQItem {
 
 const FAQ_ITEMS: FAQItem[] = [
   {
-    question: "¿Para quién es Bandeja?",
+    question: "¿Para quién es Viborea?",
     answer:
       "Academias de pádel con alguien que pueda desplegar y mantener una app web. Fork de Tandava (AGPL-3.0).",
   },
   {
     question: "¿Es gratis?",
     answer:
-      "Sí. Bandeja está bajo AGPL-3.0. Podés autoalojarlo. Si lo ofrecés en red, las modificaciones se publican bajo la misma licencia.",
+      "Sí. Viborea está bajo AGPL-3.0. Podés autoalojarlo. Si lo ofrecés en red, las modificaciones se publican bajo la misma licencia.",
   },
   {
     question: "How is this different from MindBody or Momence?",
@@ -420,7 +420,7 @@ export default function Demo() {
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-400" />
               </span>
               <span className="text-sm font-semibold text-white/90">
-                Demo de Bandeja
+                Demo de Viborea
               </span>
             </div>
           </div>
@@ -474,7 +474,7 @@ export default function Demo() {
             </h1>
 
             <p className="text-lg text-muted-foreground leading-relaxed max-w-2xl mb-8">
-              Bandeja gestiona clases de pádel con entrenador, pista y sede.
+              Viborea gestiona clases de pádel con entrenador, pista y sede.
               Packs o clase suelta, cobro adelantado, sin doble reserva.
               Código abierto, AGPL-3.0.
             </p>
@@ -632,7 +632,7 @@ export default function Demo() {
               <strong className="text-foreground">{OXATL_STUDIO.name}</strong>,
               una academia de pádel ficticia con {OXATL_LOCATIONS.length} sedes,{" "}
               {OXATL_TEACHERS.length} entrenadores y {OXATL_CLASS_TYPES.length}{" "}
-              tipos de clase. Elegí un rol para ver Bandeja.
+              tipos de clase. Elegí un rol para ver Viborea.
             </p>
           </div>
 
@@ -865,7 +865,7 @@ export default function Demo() {
       <section className="border-t border-border bg-card/30">
         <div className="max-w-3xl mx-auto px-6 py-14 text-center">
           <p className="text-sm text-muted-foreground">
-            Bandeja es software libre (AGPL-3.0), fork de Tandava.
+            Viborea es software libre (AGPL-3.0), fork de Tandava.
           </p>
         </div>
       </section>
@@ -897,7 +897,7 @@ export default function Demo() {
       <footer className="border-t border-border py-8 px-6">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">Bandeja</span>
+            <span className="font-medium text-foreground">Viborea</span>
             <span>·</span>
             <span>Gestión de academias de pádel</span>
           </div>

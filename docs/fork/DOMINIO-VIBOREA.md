@@ -1,10 +1,10 @@
-# Dominio Bandeja
+# Dominio Viborea
 
-Bandeja es la operación de una academia de pádel: grilla fija + excepciones de la semana, cobro adelantado, sin doble reserva de pista ni de entrenador.
+Viborea es la operación de una academia de pádel: grilla fija + excepciones de la semana, cobro adelantado, sin doble reserva de pista ni de entrenador.
 
 No es alquiler de canchas al público (Playtomic). No es “reservá 30 minutos conmigo” (Calendly). Academia DG (Asunción) es el piloto, no el producto: el schema no nombra a Diego, Paraguay ni DG.
 
-Metáfora: la bandeja es el golpe de control. El software controla la grilla.
+Metáfora: la bandeja (golpe de control). El producto se llama Viborea; el software controla la grilla.
 
 ## Conservar de Tandava
 
@@ -85,7 +85,7 @@ No ocupan: `cancelled` | `late_cancel` | `waitlisted` | `no_show`.
 
 ## Cuándo se consume el pack
 
-Tandava ya decrementa el pack / el ciclo de membresía **al confirmar el booking cubierto** (`book_class` RPC y el motor JS de entitlements), no en el check-in. Bandeja no inventa un tercer momento.
+Tandava ya decrementa el pack / el ciclo de membresía **al confirmar el booking cubierto** (`book_class` RPC y el motor JS de entitlements), no en el check-in. Viborea no inventa un tercer momento.
 
 Drop-in / clase suelta: booking `pending_payment` → PaymentProvider stub → `paid` → `confirmed`. Stripe queda detrás de la interfaz, fuera del happy path.
 
@@ -103,7 +103,7 @@ Política 24 h = `studios.default_cancellation_minutes` (demo 1440). Configurabl
 
 ## Booking
 
-Estados mínimos Bandeja: `pending_payment` | `confirmed` | `cancelled` | `no_show` | `waitlist` (`waitlisted`).
+Estados mínimos Viborea: `pending_payment` | `confirmed` | `cancelled` | `no_show` | `waitlist` (`waitlisted`).
 
 Se conservan los de Tandava que ya operan el mostrador: `checked_in`, `late_cancel`.
 
@@ -118,4 +118,4 @@ Se conservan los de Tandava que ya operan el mostrador: `checked_in`, `late_canc
 
 ## Fuera de este dominio (v1)
 
-WhatsApp / Chatwoot / Instagram, payroll / pooling de profes, portal de progreso, Captain AI, alquiler público de pistas, billing de Bandeja a las academias.
+WhatsApp / Chatwoot / Instagram, payroll / pooling de profes, portal de progreso, Captain AI, alquiler público de pistas, billing de Viborea a las academias.

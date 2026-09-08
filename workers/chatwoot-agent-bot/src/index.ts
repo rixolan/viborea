@@ -57,7 +57,7 @@ async function handleIntent(env: Env, conversationId: number, intent: MenuValue)
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === "GET") {
-      return new Response("bandeja chatwoot bot ok", { status: 200 });
+      return new Response("viborea chatwoot bot ok", { status: 200 });
     }
     if (request.method !== "POST") {
       return new Response("method not allowed", { status: 405 });

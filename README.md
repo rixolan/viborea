@@ -1,10 +1,10 @@
-# Bandeja
+# Viborea
 
 **La operación de una academia de pádel, en un solo sistema.**
 
 Grilla (sede + pista/cancha + entrenador + horario). Packs o clase suelta. Cobro adelantado. Excepciones de la semana sobre una planilla madre. Sin doble reserva de pista ni de profe.
 
-Bandeja es un fork de [Tandava](https://github.com/TaylorONeal/tandava) (AGPL-3.0). El origen y el copyright de Tandava están en [NOTICE](NOTICE) y [LICENSE](LICENSE). No está afiliado a Cal.com.
+Viborea es un fork de [Tandava](https://github.com/TaylorONeal/tandava) (AGPL-3.0). El origen y el copyright de Tandava están en [NOTICE](NOTICE) y [LICENSE](LICENSE). No está afiliado a Cal.com.
 
 No es alquiler de canchas al público. No es “reservá 30 minutos conmigo”.
 
@@ -55,10 +55,10 @@ Guía: [workers/chatwoot-agent-bot/README.md](workers/chatwoot-agent-bot/README.
 
 Fuera de esta fase: TPago/Pagopar/MP, payroll, WhatsApp de producción.
 
-Documentos: [docs/fork/INVENTARIO-TANDAVA.md](docs/fork/INVENTARIO-TANDAVA.md), [docs/fork/DOMINIO-BANDEJA.md](docs/fork/DOMINIO-BANDEJA.md), [CONTEXT.md](CONTEXT.md).
+Documentos: [docs/fork/INVENTARIO-TANDAVA.md](docs/fork/INVENTARIO-TANDAVA.md), [docs/fork/DOMINIO-VIBOREA.md](docs/fork/DOMINIO-VIBOREA.md), [CONTEXT.md](CONTEXT.md).
 
 ---
 
 ## Licencia
 
-GNU Affero General Public License v3.0. Si Bandeja se ofrece como servicio de red, hay que publicar las modificaciones bajo AGPL. Ver [LICENSE](LICENSE) y [NOTICE](NOTICE).
+GNU Affero General Public License v3.0. Si Viborea se ofrece como servicio de red, hay que publicar las modificaciones bajo AGPL. Ver [LICENSE](LICENSE) y [NOTICE](NOTICE).

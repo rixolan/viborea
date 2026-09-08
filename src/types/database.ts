@@ -1,4 +1,4 @@
-// Bandeja / Tandava studio management — TypeScript types
+// Viborea / Tandava studio management — TypeScript types
 // Generated from the Supabase schema for type-safe client usage
 
 import { formatMoney } from "@/lib/money";

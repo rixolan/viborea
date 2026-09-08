@@ -94,7 +94,7 @@ i18n
     },
     detection: {
       order: ['localStorage', 'htmlTag', 'navigator'],
-      lookupLocalStorage: 'bandeja-language',
+      lookupLocalStorage: 'viborea-language',
       caches: ['localStorage'],
       convertDetectedLanguage: (lng: string) => {
         if (/^zh\b/i.test(lng)) {

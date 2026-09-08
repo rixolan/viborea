@@ -1,11 +1,11 @@
-# Bandeja
+# Viborea
 
 Software de gestión de academias de pádel. Controla la grilla (sede, pista, entrenador, horario); no remata con automatización.
 
 ## Language
 
 **Studio**:
-Academia. Raíz organizativa. No es un tenant de facturación de Bandeja.
+Academia. Raíz organizativa. No es un tenant de facturación de Viborea.
 _Avoid_: Club (como marketplace), tenant
 
 **Location**:

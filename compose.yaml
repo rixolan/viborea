@@ -28,5 +28,17 @@ services:
     expose:
       - "8080"
 
+  web:
+    build: ./web
+    restart: unless-stopped
+    environment:
+      NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+      NUXT_CLERK_SECRET_KEY: ${NUXT_CLERK_SECRET_KEY:-}
+      PORT: "8081"
+      NITRO_PORT: "8081"
+      NITRO_HOST: "0.0.0.0"
+    expose:
+      - "8081"
+
 volumes:
   pgdata:

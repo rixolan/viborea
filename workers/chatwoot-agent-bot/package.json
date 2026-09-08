@@ -1,5 +1,5 @@
 {
-  "name": "@bandeja/chatwoot-agent-bot",
+  "name": "@viborea/chatwoot-agent-bot",
   "private": true,
   "type": "module",
   "scripts": {

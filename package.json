@@ -1,10 +1,11 @@
 {
-  "name": "bandeja",
+  "name": "viborea",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "bun --cwd core --hot src/server.ts",
+    "web": "bun --cwd web dev",
     "start": "bun --cwd core src/server.ts",
     "test:core": "bun --cwd core test",
     "dev:fork": "vite",
