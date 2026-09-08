@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { CreateOrganization, SignIn, SignUp, useAuth } from "@clerk/clerk-react";
+import { CreateOrganization, SignUp, useAuth, useSignIn } from "@clerk/clerk-react";
 import { api, type Session, type SessionDetail } from "./api";
 import { RequireAcademia, RequireAuth } from "./auth";
 import { Badge, Button, Card, Input } from "./ui";
@@ -64,17 +64,57 @@ export function Entrar() {
   if (!key) {
     return <p className="text-sm text-stone-600">Falta VITE_CLERK_PUBLISHABLE_KEY.</p>;
   }
+  return <EntrarForm />;
+}
+
+function EntrarForm() {
+  const { isLoaded, signIn, setActive } = useSignIn();
+  const nav = useNavigate();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!signIn || !setActive) return;
+    setMsg(null);
+    try {
+      const res = await signIn.create({ identifier: email, password });
+      if (res.status === "complete" && res.createdSessionId) {
+        await setActive({ session: res.createdSessionId });
+        nav("/academia");
+        return;
+      }
+      setMsg(
+        res.status === "needs_second_factor"
+          ? "Esta cuenta tiene segundo factor. Desactivalo en Clerk."
+          : `No se pudo entrar (${res.status}).`,
+      );
+    } catch (err) {
+      const clerkErr = err as { errors?: Array<{ message?: string }> };
+      setMsg(clerkErr.errors?.[0]?.message ?? (err instanceof Error ? err.message : "Error"));
+    }
+  }
+  if (!isLoaded) return <p className="text-sm text-stone-500">Cargando…</p>;
   return (
-    <div className="mx-auto max-w-md py-8">
-      <h1 className="mb-6 text-2xl font-semibold">Entrar</h1>
-      <SignIn routing="hash" forceRedirectUrl="/academia" />
-      <p className="mt-4 text-sm text-stone-600">
+    <form className="mx-auto max-w-md space-y-3 py-8" onSubmit={onSubmit}>
+      <h1 className="text-2xl font-semibold">Entrar</h1>
+      <label className="block text-sm">
+        Email
+        <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="username" />
+      </label>
+      <label className="block text-sm">
+        Contraseña
+        <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
+      </label>
+      <Button type="submit">Entrar</Button>
+      {msg ? <p className="text-sm text-red-700">{msg}</p> : null}
+      <p className="text-sm text-stone-600">
         ¿Academia nueva?{" "}
         <Link to="/registro" className="underline">
           Registrarse
         </Link>
       </p>
-    </div>
+    </form>
   );
 }
 
