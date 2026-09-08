@@ -2,6 +2,7 @@ import type { Db } from "./db";
 import {
   academy,
   catalogs,
+  ensureWeek,
   getSession,
   mondayOf,
   publicBook,
@@ -33,6 +34,7 @@ export async function handleApi(req: Request, db: Db): Promise<Response | null> 
   if (req.method === "GET" && url.pathname === "/api/week") {
     const raw = url.searchParams.get("monday");
     const monday = mondayOf(raw ? new Date(`${raw}T00:00:00.000Z`) : new Date());
+    await ensureWeek(db, monday);
     const sessions = await weekSessions(db, monday);
     return json({ monday: monday.toISOString().slice(0, 10), sessions });
   }
