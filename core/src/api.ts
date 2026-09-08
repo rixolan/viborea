@@ -9,9 +9,11 @@ import {
   selfServeCancel,
   sessionBookings,
   setBookingStatus,
+  updateCutoffHours,
   weekSessions,
 } from "./db";
 import { parseCategory, parseSide } from "./domain/student";
+import { CutoffError } from "./domain/cutoff";
 import type { BookingStatus } from "./domain/types";
 import { requireAcademy } from "./auth";
 
@@ -28,6 +30,23 @@ export async function handleApi(req: Request, db: Db): Promise<Response | null> 
     return json({ ok: true, academy: ac.name });
   }
 
+  if (req.method === "GET" && url.pathname === "/api/settings") {
+    const ac = await academy(db);
+    return json({ name: ac.name, cutoff_hours: ac.cutoff_hours });
+  }
+
+  if (req.method === "PATCH" && url.pathname === "/api/settings") {
+    const denied = await requireAcademy(req);
+    if (denied) return denied;
+    const body = (await req.json()) as { cutoff_hours?: number | string };
+    try {
+      const hours = await updateCutoffHours(db, body.cutoff_hours ?? "");
+      return json({ cutoff_hours: hours, message: `Plazo: ${hours} h antes de la clase.` });
+    } catch (err) {
+      const msg = err instanceof CutoffError || err instanceof Error ? err.message : "Error";
+      return json({ error: msg }, 400);
+    }
+  }
   if (req.method === "GET" && url.pathname === "/api/catalog") {
     const cat = await catalogs(db);
     return json({ locations: cat.locations, coaches: cat.coaches, students: cat.students });

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, NavLink, useNavigate, useParams } from "react-router-dom";
 import { CreateOrganization, SignUp, useAuth, useSignIn } from "@clerk/clerk-react";
 import { api, type Session, type SessionDetail } from "./api";
 import { RequireAcademia, RequireAuth } from "./auth";
@@ -318,6 +318,21 @@ export function Jugador() {
   );
 }
 
+function AcademiaNav() {
+  const item = ({ isActive }: { isActive: boolean }) =>
+    `rounded-lg px-3 py-1.5 text-sm ${isActive ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"}`;
+  return (
+    <nav className="flex flex-wrap gap-1">
+      <NavLink to="/academia" end className={item}>
+        Grilla
+      </NavLink>
+      <NavLink to="/academia/ajustes" className={item}>
+        Reservas
+      </NavLink>
+    </nav>
+  );
+}
+
 export function Academia() {
   const [monday, setMonday] = useState(mondayISO());
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -333,8 +348,11 @@ export function Academia() {
   return (
     <RequireAcademia>
       <div className="space-y-6">
-        <h1 className="text-2xl font-semibold">Academia</h1>
-        <p className="text-sm text-stone-600">Grilla de la semana. Filtrá por profe si hace falta.</p>
+        <div>
+          <h1 className="text-2xl font-semibold">Academia</h1>
+          <p className="mt-1 text-sm text-stone-600">Grilla de la semana. Filtrá por profe si hace falta.</p>
+        </div>
+        <AcademiaNav />
         <div className="flex flex-wrap gap-3">
           <WeekNav monday={monday} onMonday={setMonday} />
           <select
@@ -386,6 +404,7 @@ export function AcademiaSesion() {
   return (
     <RequireAcademia>
       <div className="space-y-4">
+        <AcademiaNav />
         <Link to="/academia" className="text-sm text-stone-500">
           ← Grilla
         </Link>
@@ -423,6 +442,62 @@ export function AcademiaSesion() {
               </li>
             ))}
           </ul>
+        </Card>
+      </div>
+    </RequireAcademia>
+  );
+}
+
+export function AcademiaAjustes() {
+  const { getToken } = useAuth();
+  const [hours, setHours] = useState("12");
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    api
+      .settings()
+      .then((s) => setHours(String(s.cutoff_hours)))
+      .catch((e: Error) => setMsg(e.message));
+  }, []);
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setMsg(null);
+    try {
+      const token = (await getToken()) ?? undefined;
+      const r = await api.saveSettings(Number(hours), token);
+      setHours(String(r.cutoff_hours));
+      setMsg(r.message);
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Error");
+    }
+  }
+  return (
+    <RequireAcademia>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold">Reservas</h1>
+          <p className="mt-1 text-sm text-stone-600">Plazo de auto-reserva y de cancelación con devolución del pack.</p>
+        </div>
+        <AcademiaNav />
+        <Card className="max-w-sm space-y-3">
+          <form className="space-y-3" onSubmit={onSubmit}>
+            <label className="block text-sm">
+              Horas antes de la clase
+              <Input
+                type="number"
+                min={1}
+                max={72}
+                value={hours}
+                onChange={(e) => setHours(e.target.value)}
+                required
+              />
+            </label>
+            <p className="text-xs text-stone-500">
+              Default 12. El jugador no reserva ni cancela (con devolución) dentro de ese plazo. El escritorio de la
+              academia sí puede anotar después.
+            </p>
+            <Button type="submit">Guardar</Button>
+          </form>
+          {msg ? <p className="text-sm">{msg}</p> : null}
         </Card>
       </div>
     </RequireAcademia>

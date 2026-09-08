@@ -43,10 +43,19 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
+export type AcademySettings = { name: string; cutoff_hours: number };
+
 export const api = {
   catalog: () => req<{ locations: Location[]; coaches: Coach[]; students: Student[] }>("/api/catalog"),
   week: (monday: string) => req<{ sessions: Session[] }>(`/api/week?monday=${monday}`),
   session: (id: string) => req<SessionDetail>(`/api/sessions/${id}`),
+  settings: () => req<AcademySettings>("/api/settings"),
+  saveSettings: (cutoffHours: number, token?: string) =>
+    req<{ cutoff_hours: number; message: string }>("/api/settings", {
+      method: "PATCH",
+      body: JSON.stringify({ cutoff_hours: cutoffHours }),
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+    }),
   book: (input: { sessionId: string; name: string; phone: string; category?: string; side?: string }) =>
     req<{ status: string; message?: string }>("/api/book", { method: "POST", body: JSON.stringify(input) }),
   setStatus: (bookingId: string, status: string, token?: string) =>

@@ -1,6 +1,6 @@
 import { Navigate, createBrowserRouter, RouterProvider, useParams } from "react-router-dom";
 import { Shell } from "./shell";
-import { Academia, AcademiaNueva, AcademiaSesion, Entrar, Jugador, Landing, Registro, Reservar, ReservarSesion } from "./pages";
+import { Academia, AcademiaAjustes, AcademiaNueva, AcademiaSesion, Entrar, Jugador, Landing, Registro, Reservar, ReservarSesion } from "./pages";
 
 function RedirectAcademiaSesion() {
   const { id } = useParams();
@@ -19,7 +19,9 @@ const router = createBrowserRouter([
       { path: "/jugador", element: <Jugador /> },
       { path: "/academia", element: <Academia /> },
       { path: "/academia/nueva", element: <AcademiaNueva /> },
+      { path: "/academia/ajustes", element: <AcademiaAjustes /> },
       { path: "/academia/sesion/:id", element: <AcademiaSesion /> },
+      { path: "/ajustes", element: <Navigate to="/academia/ajustes" replace /> },
       { path: "/cliente", element: <Navigate to="/jugador" replace /> },
       { path: "/admin", element: <Navigate to="/academia" replace /> },
       { path: "/admin/sesion/:id", element: <RedirectAcademiaSesion /> },
