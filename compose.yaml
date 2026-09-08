@@ -21,12 +21,12 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://bandeja:${POSTGRES_PASSWORD:-bandeja}@db:5432/bandeja
-      PORT: "3000"
+      PORT: "8080"
     depends_on:
       db:
         condition: service_healthy
     expose:
-      - "3000"
+      - "8080"
 
 volumes:
   pgdata:
