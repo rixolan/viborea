@@ -6,6 +6,7 @@
       :links="[{
         label: 'Reservar una clase',
         to: '/reservar',
+        external: true,
         trailingIcon: 'i-lucide-arrow-right',
         size: 'xl'
       }, {

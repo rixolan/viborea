@@ -16,7 +16,7 @@ definePageMeta({
           Próximas clases, saldo del pack y reservas.
         </p>
       </div>
-      <UButton to="/reservar" trailing-icon="i-lucide-arrow-right">
+      <UButton to="/reservar" external trailing-icon="i-lucide-arrow-right">
         Reservar clase
       </UButton>
     </div>

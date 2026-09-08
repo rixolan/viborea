@@ -22,5 +22,10 @@ export default defineNuxtConfig({
     preference: 'light'
   },
 
+  routeRules: {
+    '/reservar': { proxy: 'http://app:8080/reservar' },
+    '/reservar/**': { proxy: 'http://app:8080/reservar/**' }
+  },
+
   compatibilityDate: '2026-06-30'
 })

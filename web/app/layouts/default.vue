@@ -7,7 +7,7 @@
         </NuxtLink>
       </template>
       <template #right>
-        <UButton to="/reservar" color="neutral">
+        <UButton to="/reservar" color="neutral" external>
           Reservar clase
         </UButton>
         <UButton to="/cliente" color="neutral" variant="ghost">
