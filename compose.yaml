@@ -15,6 +15,8 @@ services:
       retries: 10
     ports:
       - "127.0.0.1:5432:5432"
+    networks:
+      - internal
 
   app:
     build:
@@ -22,6 +24,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_CLERK_PUBLISHABLE_KEY: ${NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-${VITE_CLERK_PUBLISHABLE_KEY:-}}
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgres://bandeja:${POSTGRES_PASSWORD:-bandeja}@db:5432/bandeja
       PORT: "8080"
@@ -30,9 +33,12 @@ services:
         condition: service_healthy
     expose:
       - "8080"
+    networks:
+      - internal
+      - dokploy
     labels:
       - traefik.enable=true
-      - traefik.docker.network=bandeja-2ryryu
+      - traefik.docker.network=dokploy-network
       - traefik.http.routers.viborea.rule=Host(`viborea.com`) || Host(`www.viborea.com`)
       - traefik.http.routers.viborea.entrypoints=web
       - traefik.http.routers.viborea.middlewares=redirect-to-https@file
@@ -42,9 +48,18 @@ services:
       - traefik.http.routers.viboreasecure.rule=Host(`viborea.com`) || Host(`www.viborea.com`)
       - traefik.http.routers.viboreasecure.entrypoints=websecure
       - traefik.http.routers.viboreasecure.tls=true
+      - traefik.http.routers.viboreasecure.tls.certresolver=letsencrypt
       - traefik.http.routers.viboreasecure.priority=10
       - traefik.http.routers.viboreasecure.service=viboreasecure
       - traefik.http.services.viboreasecure.loadbalancer.server.port=8080
 
 volumes:
   pgdata:
+
+networks:
+  internal:
+    name: bandeja-2ryryu
+    external: true
+  dokploy:
+    name: dokploy-network
+    external: true
