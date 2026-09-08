@@ -1,5 +1,5 @@
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { OrganizationSwitcher, SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
 
 const areas = [
   { to: "/reservar", label: "Reservar" },
@@ -23,7 +23,6 @@ function AuthSlot() {
         </Link>
       </SignedOut>
       <SignedIn>
-        <OrganizationSwitcher hidePersonal afterSelectOrganizationUrl="/academia" />
         <UserButton />
       </SignedIn>
     </>
