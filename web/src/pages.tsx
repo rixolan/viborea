@@ -36,11 +36,10 @@ export function Landing() {
         </div>
       </section>
       <section className="border-t border-stone-200 bg-white">
-        <div className="mx-auto grid max-w-5xl gap-6 px-4 py-16 sm:grid-cols-3">
+        <div className="mx-auto grid max-w-5xl gap-6 px-4 py-16 sm:grid-cols-2">
           {[
-            ["Cliente", "Reservas y saldo del pack.", "/cliente"],
-            ["Profe", "La semana y el roster de tus clases.", "/profe"],
-            ["Admin", "Grilla, alumnos y estado de pago.", "/admin"],
+            ["Jugador", "Reservas y saldo del pack.", "/jugador"],
+            ["Academia", "Grilla, profes, roster y pago.", "/academia"],
           ].map(([title, body, to]) => (
             <Card key={title}>
               <p className="font-medium">{title}</p>
@@ -233,13 +232,13 @@ export function ReservarSesion() {
   );
 }
 
-export function Cliente() {
+export function Jugador() {
   return (
     <RequireAuth>
       <div className="space-y-6">
         <div className="flex items-end justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">Cliente</h1>
+            <h1 className="text-2xl font-semibold">Jugador</h1>
             <p className="text-sm text-stone-600">Tus clases y el pack.</p>
           </div>
           <Link to="/reservar" className="text-sm font-medium underline">
@@ -254,25 +253,23 @@ export function Cliente() {
   );
 }
 
-export function Profe() {
+export function Academia() {
   const [monday, setMonday] = useState(mondayISO());
   const [sessions, setSessions] = useState<Session[]>([]);
   const [coachId, setCoachId] = useState("");
   const [coaches, setCoaches] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => {
-    api.catalog().then((c) => {
-      setCoaches(c.coaches);
-      if (c.coaches[0]) setCoachId(c.coaches[0].id);
-    });
+    api.catalog().then((c) => setCoaches(c.coaches));
   }, []);
   useEffect(() => {
-    api.week(monday).then((r) => setSessions(r.sessions.filter((s) => !s.cancelled)));
+    api.week(monday).then((r) => setSessions(r.sessions));
   }, [monday]);
-  const mine = sessions.filter((s) => !coachId || s.coach_id === coachId);
+  const shown = sessions.filter((s) => !coachId || s.coach_id === coachId);
   return (
     <RequireAuth>
       <div className="space-y-6">
-        <h1 className="text-2xl font-semibold">Profe</h1>
+        <h1 className="text-2xl font-semibold">Academia</h1>
+        <p className="text-sm text-stone-600">Grilla de la semana. Filtrá por profe si hace falta.</p>
         <div className="flex flex-wrap gap-3">
           <WeekNav monday={monday} onMonday={setMonday} />
           <select
@@ -280,6 +277,7 @@ export function Profe() {
             value={coachId}
             onChange={(e) => setCoachId(e.target.value)}
           >
+            <option value="">Todos los profes</option>
             {coaches.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -288,33 +286,9 @@ export function Profe() {
           </select>
         </div>
         <SessionList
-          sessions={mine}
+          sessions={shown}
           action={(s) => (
-            <Link to={`/admin/sesion/${s.id}`} className="text-sm underline">
-              Roster
-            </Link>
-          )}
-        />
-      </div>
-    </RequireAuth>
-  );
-}
-
-export function Admin() {
-  const [monday, setMonday] = useState(mondayISO());
-  const [sessions, setSessions] = useState<Session[]>([]);
-  useEffect(() => {
-    api.week(monday).then((r) => setSessions(r.sessions));
-  }, [monday]);
-  return (
-    <RequireAuth>
-      <div className="space-y-6">
-        <h1 className="text-2xl font-semibold">Admin</h1>
-        <WeekNav monday={monday} onMonday={setMonday} />
-        <SessionList
-          sessions={sessions}
-          action={(s) => (
-            <Link to={`/admin/sesion/${s.id}`} className="text-sm underline">
+            <Link to={`/academia/sesion/${s.id}`} className="text-sm underline">
               Abrir
             </Link>
           )}
@@ -324,7 +298,7 @@ export function Admin() {
   );
 }
 
-export function AdminSesion() {
+export function AcademiaSesion() {
   const { id } = useParams();
   const [data, setData] = useState<SessionDetail | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -345,7 +319,7 @@ export function AdminSesion() {
   return (
     <RequireAuth>
       <div className="space-y-4">
-        <Link to="/admin" className="text-sm text-stone-500">
+        <Link to="/academia" className="text-sm text-stone-500">
           ← Grilla
         </Link>
         <h1 className="text-2xl font-semibold">
@@ -356,7 +330,7 @@ export function AdminSesion() {
         </p>
         {msg ? <p className="text-sm">{msg}</p> : null}
         <Card>
-          <p className="mb-3 font-medium">Roster</p>
+          <p className="mb-3 font-medium">Jugadores</p>
           <ul className="divide-y">
             {data.bookings.map((b) => (
               <li key={b.id} className="flex items-center justify-between py-2 text-sm">

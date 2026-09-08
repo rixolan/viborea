@@ -3,9 +3,8 @@ import { SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
 
 const areas = [
   { to: "/reservar", label: "Reservar" },
-  { to: "/cliente", label: "Cliente" },
-  { to: "/profe", label: "Profe" },
-  { to: "/admin", label: "Admin" },
+  { to: "/jugador", label: "Jugador" },
+  { to: "/academia", label: "Academia" },
 ] as const;
 
 function AuthSlot() {
