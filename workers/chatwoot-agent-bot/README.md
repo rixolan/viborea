@@ -1,5 +1,7 @@
 # Chatwoot AgentBot — Bandeja
 
+Source: [`workers/chatwoot-agent-bot`](https://github.com/rixolan/bandeja/tree/main/workers/chatwoot-agent-bot) in [rixolan/bandeja](https://github.com/rixolan/bandeja).
+
 Cloudflare Worker that answers a Chatwoot Community Edition inbox with a WhatsApp list:
 
 1. Confirmar clase
