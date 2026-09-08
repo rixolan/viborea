@@ -1,9 +1,40 @@
 export const MENU_ITEMS = [
+  { title: "Soy nuevo", value: "nuevo" },
+  { title: "Ver horarios", value: "horarios" },
   { title: "Confirmar clase", value: "confirmar" },
   { title: "Reprogramar", value: "reprogramar" },
   { title: "Pagar", value: "pagar" },
   { title: "Hablar con alguien", value: "humano" },
 ] as const;
+
+export const GREETING_PROMPT =
+  "Hola, Academia DG.\n\nSi es tu primera vez, tocá «Soy nuevo».\nMañana 11:00 — Individual en Lomas (ejemplo, sandbox).\n\n¿Qué necesitás?";
+
+export const FALLBACK_PROMPT = "No te seguí. Elegí una opción:";
+
+export const NUEVO_PROMPT = `Academia Diego González — profes del pádel.
+
+Tres clubes de Asunción: Lomas, Elite y Segurola & Habana.
+Desde el primer golpe hasta alto rendimiento. Clases en español, inglés, portugués e italiano.
+
+Un equipo de profes de primera, con Diego González al frente.
+
+Individual Gs. 150.000 · Dual 125.000 · Grupal 100.000
+(precios de julio, sandbox)
+
+Se paga adelantado. Si cancelás con menos de 24 h, se cobra.
+
+¿Horarios, o hablamos?`;
+
+export const HORARIOS_PROMPT = `Disponibilidad de ejemplo — no lee la planilla:
+
+• Mañana 11:00 — Individual · Lomas
+• Miércoles 16:00 — Dual · Elite
+• Jueves 16:00 — Grupal · Segurola
+
+El pico 15:00–17:00 suele estar lleno.
+
+Elegí otra opción o pedí hablar con alguien para un hueco real.`;
 
 export type MenuValue = (typeof MENU_ITEMS)[number]["value"];
 
@@ -24,6 +55,57 @@ export function isGreeting(s: string): boolean {
   return /^(hola|hi|hello|buenas|buen dia|menu|opciones|\/menu|\/start|start)$/.test(
     s,
   );
+}
+
+const ALIASES: Array<[RegExp, MenuValue]> = [
+  [/\b(nuevo|nueva|primera|clases?|precios?|modalidades?|info|academia)\b/, "nuevo"],
+  [/\b(horarios?|disponibilidad|huecos?|cuando)\b/, "horarios"],
+];
+
+export function matchIntent(text: string): MenuValue | undefined {
+  if (MENU_VALUES.has(text)) return text as MenuValue;
+  const titled = MENU_TITLES.get(text);
+  if (titled) return titled;
+  for (const [re, value] of ALIASES) {
+    if (re.test(text)) return value;
+  }
+  return undefined;
+}
+
+export type IntentReply = {
+  kind: "select" | "text" | "handoff";
+  content: string;
+};
+
+export function replyForIntent(intent: MenuValue, human: string): IntentReply {
+  switch (intent) {
+    case "nuevo":
+      return { kind: "select", content: NUEVO_PROMPT };
+    case "horarios":
+      return { kind: "select", content: HORARIOS_PROMPT };
+    case "confirmar":
+      return {
+        kind: "text",
+        content:
+          "Listo: dejamos la clase confirmada. (Sandbox: todavía no toca el calendario real.)",
+      };
+    case "reprogramar":
+      return {
+        kind: "text",
+        content: `Podemos mover la clase. Decime día y horario, o tocá «Hablar con alguien». (Sandbox.)`,
+      };
+    case "pagar":
+      return {
+        kind: "text",
+        content:
+          "Acá iría el link de pago. En este piloto es solo el texto. Cuando esté el enlace, te llega en este mismo paso.",
+      };
+    case "humano":
+      return {
+        kind: "handoff",
+        content: `Te paso con ${human}. En un rato te escribe.`,
+      };
+  }
 }
 
 export type Incoming = {
@@ -110,16 +192,12 @@ export function decide(body: unknown, inboxId: string): Decision {
   const text = norm(msg.content ?? "");
   if (!text) return { action: "ignore", reason: "empty" };
 
-  const intent = MENU_VALUES.has(text)
-    ? (text as MenuValue)
-    : MENU_TITLES.get(text);
+  const intent = matchIntent(text);
   if (intent) return { action: "intent", conversationId, intent };
 
   return {
     action: "menu",
     conversationId,
-    prompt: isGreeting(text)
-      ? "Hola, ¿qué necesitás?"
-      : "No te seguí. Elegí una opción:",
+    prompt: isGreeting(text) ? GREETING_PROMPT : FALLBACK_PROMPT,
   };
 }

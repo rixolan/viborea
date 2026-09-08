@@ -82,10 +82,10 @@ export function TeachLayout({ children }: TeachLayoutProps) {
               </div>
               <div className="hidden sm:block">
                 <p className="text-sm font-semibold leading-none">
-                  Teacher Portal
+                  Portal del entrenador
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Oxatl Yoga
+                  Academia Alameda
                 </p>
               </div>
             </Link>

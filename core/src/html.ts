@@ -565,3 +565,33 @@ export function placeholderBookPage(opts: {
     </div>`;
   return layout(opts.academy, "Confirmar", body, opts.flash, "public", 3);
 }
+
+export function pilotoPage(
+  academy: Academy,
+  flash?: { ok?: string; error?: string },
+  result?: { offering: string; startsAt: string; remaining: number; message: string; whatsapp: string },
+): string {
+  const resultBlock = result
+    ? `<div class="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-stone-200/80 space-y-2">
+        <p class="font-display text-2xl">Reserva confirmada</p>
+        <p class="text-sm text-stone-600">${esc(result.offering)} · ${esc(result.startsAt)}</p>
+        <p class="text-sm">Quedan <strong>${result.remaining}</strong> clases del paquete de 10.</p>
+        <p class="text-sm">${esc(result.message)}</p>
+        <p class="text-xs text-stone-500">WhatsApp: ${esc(result.whatsapp)}</p>
+      </div>`
+    : "";
+  const body = `
+    <p class="text-sm text-stone-500">Prueba interna. Pack de 10 + reserva grupal + aviso WhatsApp (número de prueba de Meta).</p>
+    ${resultBlock}
+    <form method="post" action="/piloto/reserva" class="mx-auto grid max-w-lg gap-3 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-stone-200/80">
+      <label class="text-sm font-medium">Nombre
+        <input required name="name" class="mt-1 w-full rounded-xl border-0 bg-[#f4f1ea] px-3 py-2.5 ring-1 ring-stone-200" value="Ana Piloto">
+      </label>
+      <label class="text-sm font-medium">WhatsApp (con código de país)
+        <input required name="phone" type="tel" class="mt-1 w-full rounded-xl border-0 bg-[#f4f1ea] px-3 py-2.5 ring-1 ring-stone-200" placeholder="+595981111111">
+      </label>
+      <p class="text-xs text-stone-500">El número tiene que estar en la lista de prueba de Meta para recibir el mensaje.</p>
+      <button class="rounded-full bg-teal-800 px-4 py-3 text-sm font-semibold text-white">Reservar y avisar</button>
+    </form>`;
+  return layout(academy, "Piloto WhatsApp", body, flash);
+}

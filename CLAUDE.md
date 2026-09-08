@@ -98,12 +98,11 @@ tandava/
 ## Running Locally
 
 ```bash
-npm install
-echo "VITE_DEMO_MODE=true" > .env.local
-npm run dev
+bun install
+bun run dev
 ```
 
-Opens at http://localhost:8080 with demo data.
+Opens at http://localhost:3000 (`core/`, Bun + SQLite). The Vite SPA at 8080 is the Tandava fork: `bun run dev:fork`.
 
 ---
 

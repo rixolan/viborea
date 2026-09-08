@@ -3,6 +3,14 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { assertNoOverlap } from "./domain/overlap";
 import { nextBookingStatus } from "./domain/capacity";
+import {
+  consumeOnConfirm,
+  offeringKindFromCapacity,
+  purchasePack as newPack,
+  type ClassPack,
+  type PackAlert,
+  type PackSize,
+} from "./domain/pack";
 import { addDays, dateKey, materializeTemplate, mondayOf } from "./domain/template";
 import type { BookingStatus, DayOfWeek, SessionInterval, WeeklyTemplateSlot } from "./domain/types";
 import { OverlapError } from "./domain/types";
@@ -65,16 +73,37 @@ CREATE TABLE IF NOT EXISTS students (
   name TEXT NOT NULL,
   phone TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS packs (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL REFERENCES students(id),
+  offering_kind TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  remaining INTEGER NOT NULL,
+  purchased_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS bookings (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL REFERENCES sessions(id),
   student_id TEXT NOT NULL REFERENCES students(id),
   status TEXT NOT NULL,
   channel TEXT NOT NULL DEFAULT 'admin',
+  pack_id TEXT REFERENCES packs(id),
   UNIQUE(session_id, student_id)
+);
+CREATE TABLE IF NOT EXISTS pack_alerts (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL REFERENCES students(id),
+  pack_id TEXT NOT NULL REFERENCES packs(id),
+  remaining INTEGER NOT NULL,
+  total INTEGER NOT NULL,
+  buy_again INTEGER NOT NULL,
+  message TEXT NOT NULL,
+  created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_starts ON sessions(starts_at);
 CREATE INDEX IF NOT EXISTS idx_bookings_session ON bookings(session_id);
+CREATE INDEX IF NOT EXISTS idx_packs_student ON packs(student_id);
 `;
 
 export type Academy = { id: string; name: string; locale: string; currency: string; timezone: string };
@@ -128,6 +157,10 @@ export function openDb(path = "data/bandeja.sqlite"): Database {
   const cols = db.query("PRAGMA table_info(students)").all() as { name: string }[];
   if (!cols.some((c) => c.name === "phone")) {
     db.exec("ALTER TABLE students ADD COLUMN phone TEXT NOT NULL DEFAULT ''");
+  }
+  const bookingCols = db.query("PRAGMA table_info(bookings)").all() as { name: string }[];
+  if (!bookingCols.some((c) => c.name === "pack_id")) {
+    db.exec("ALTER TABLE bookings ADD COLUMN pack_id TEXT REFERENCES packs(id)");
   }
   return db;
 }
@@ -387,8 +420,116 @@ export function publicBook(db: Database, sessionId: string, name: string, phone:
   return bookStudent(db, sessionId, student.id, "web");
 }
 
-export function setBookingStatus(db: Database, bookingId: string, status: BookingStatus): void {
-  db.query("UPDATE bookings SET status = ? WHERE id = ?").run(status, bookingId);
+export function buyPack(
+  db: Database,
+  studentId: string,
+  offeringKind: ClassPack["offeringKind"],
+  size: PackSize = 10,
+  at = new Date(),
+): ClassPack {
+  const pack = newPack({
+    id: crypto.randomUUID(),
+    studentId,
+    offeringKind,
+    size,
+    purchasedAt: at,
+  });
+  db.query(
+    "INSERT INTO packs (id, student_id, offering_kind, size, remaining, purchased_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).run(
+    pack.id,
+    pack.studentId,
+    pack.offeringKind,
+    pack.size,
+    pack.remaining,
+    pack.purchasedAt.toISOString(),
+    pack.expiresAt.toISOString(),
+  );
+  return pack;
+}
+
+function packFromRow(row: {
+  id: string;
+  student_id: string;
+  offering_kind: ClassPack["offeringKind"];
+  size: PackSize;
+  remaining: number;
+  purchased_at: string;
+  expires_at: string;
+}): ClassPack {
+  return {
+    id: row.id,
+    studentId: row.student_id,
+    offeringKind: row.offering_kind,
+    size: row.size,
+    remaining: row.remaining,
+    purchasedAt: new Date(row.purchased_at),
+    expiresAt: new Date(row.expires_at),
+  };
+}
+
+export function activePack(
+  db: Database,
+  studentId: string,
+  kind: ClassPack["offeringKind"],
+  at = new Date(),
+): ClassPack | null {
+  const row = db
+    .query(
+      "SELECT * FROM packs WHERE student_id = ? AND offering_kind = ? AND remaining > 0 AND expires_at >= ? ORDER BY purchased_at LIMIT 1",
+    )
+    .get(studentId, kind, at.toISOString()) as Parameters<typeof packFromRow>[0] | null;
+  return row ? packFromRow(row) : null;
+}
+
+function saveAlert(db: Database, alert: PackAlert, at: Date): void {
+  db.query(
+    "INSERT INTO pack_alerts (id, student_id, pack_id, remaining, total, buy_again, message, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  ).run(
+    crypto.randomUUID(),
+    alert.studentId,
+    alert.packId,
+    alert.remaining,
+    alert.total,
+    alert.buyAgain ? 1 : 0,
+    alert.message,
+    at.toISOString(),
+  );
+}
+
+export function studentAlerts(db: Database, studentId: string): { message: string; remaining: number; buy_again: number }[] {
+  return db
+    .query("SELECT message, remaining, buy_again FROM pack_alerts WHERE student_id = ? ORDER BY created_at")
+    .all(studentId) as { message: string; remaining: number; buy_again: number }[];
+}
+
+export function setBookingStatus(db: Database, bookingId: string, status: BookingStatus): PackAlert | null {
+  const booking = db
+    .query("SELECT id, session_id, student_id, status, pack_id FROM bookings WHERE id = ?")
+    .get(bookingId) as
+    | { id: string; session_id: string; student_id: string; status: BookingStatus; pack_id: string | null }
+    | null;
+  if (!booking) throw new Error("Reserva inexistente");
+  if (status !== "confirmed" || booking.status === "confirmed") {
+    db.query("UPDATE bookings SET status = ? WHERE id = ?").run(status, bookingId);
+    return null;
+  }
+  const session = db.query("SELECT capacity FROM sessions WHERE id = ?").get(booking.session_id) as
+    | { capacity: number }
+    | null;
+  if (!session) throw new Error("Sesión inexistente");
+  const kind = offeringKindFromCapacity(session.capacity);
+  const pack = activePack(db, booking.student_id, kind);
+  if (!pack) {
+    db.query("UPDATE bookings SET status = ? WHERE id = ?").run(status, bookingId);
+    return null;
+  }
+  const now = new Date();
+  const { pack: next, alert } = consumeOnConfirm(pack, now, kind);
+  db.query("UPDATE packs SET remaining = ? WHERE id = ?").run(next.remaining, next.id);
+  db.query("UPDATE bookings SET status = ?, pack_id = ? WHERE id = ?").run(status, next.id, bookingId);
+  saveAlert(db, alert, now);
+  return alert;
 }
 
 export { OverlapError, mondayOf, dateKey, addDays };

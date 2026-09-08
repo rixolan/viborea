@@ -14,15 +14,33 @@ import {
   setBookingStatus,
   weekSessions,
 } from "./db";
-import { pickProfePage, pickSedePage, placeholderBookPage, placeholderWeekPage, gridPage, sessionPage } from "./html";
+import { pickProfePage, pickSedePage, placeholderBookPage, placeholderWeekPage, gridPage, sessionPage, pilotoPage } from "./html";
 import { PLACEHOLDER_PROFES, PLACEHOLDER_SEDES, findProfe, findSede } from "./placeholders";
 import { seedIfEmpty } from "./seed";
 import type { BookingStatus } from "./domain/types";
+import { TpagoClient, configFromEnv, handleTpagoHook } from "./payments/tpago";
+import { configFromEnv as whatsappConfig, notifyReservation } from "./notify/whatsapp";
+import { pilotoReserva } from "./piloto";
+import type { PackAlert } from "./domain/pack";
 
 const db = openDb();
 seedIfEmpty(db);
 
 const PORT = Number(process.env.PORT ?? 3000);
+const tpago = new TpagoClient(configFromEnv());
+const wa = whatsappConfig();
+
+async function sendPackAlert(phone: string, alert: PackAlert | null) {
+  if (!alert) return { ok: true, channel: "dry-run" as const, error: undefined as string | undefined };
+  return notifyReservation(wa, phone, alert.message);
+}
+
+function studentPhone(bookingId: string): string | null {
+  const row = db
+    .query("SELECT s.phone AS phone FROM bookings b JOIN students s ON s.id = b.student_id WHERE b.id = ?")
+    .get(bookingId) as { phone: string } | null;
+  return row?.phone ?? null;
+}
 
 function parseWeek(url: URL): { monday: Date; day: number } {
   const w = url.searchParams.get("week");
@@ -73,11 +91,64 @@ Bun.serve({
   port: PORT,
   async fetch(req) {
     const url = new URL(req.url);
+    if (req.method === "POST" && url.pathname === "/hooks/tpago") {
+      return handleTpagoHook(req);
+    }
     const { monday, day } = parseWeek(url);
     ensureWeek(db, monday);
     const ac = academy(db);
     const flash = flashOf(url);
-
+    if (req.method === "GET" && url.pathname === "/piloto") {
+      return html(pilotoPage(ac, flash));
+    }
+    if (req.method === "POST" && url.pathname === "/piloto/reserva") {
+      const type = req.headers.get("content-type") ?? "";
+      let name = "";
+      let phone = "";
+      if (type.includes("application/json")) {
+        const body = (await req.json()) as { name?: string; phone?: string };
+        name = body.name ?? "";
+        phone = body.phone ?? "";
+      } else {
+        const form = await readForm(req);
+        name = form.get("name") ?? "";
+        phone = form.get("phone") ?? "";
+      }
+      try {
+        const result = pilotoReserva(db, { name, phone });
+        const sent = await sendPackAlert(phone, result.alert);
+        const whatsapp = sent.ok
+          ? sent.channel === "dry-run"
+            ? "dry-run (faltan WHATSAPP_TEST_*)"
+            : sent.channel === "template"
+              ? `enviado hello_world (${sent.error ?? "sin texto libre"})`
+              : "texto enviado"
+          : `falló: ${sent.error ?? "error"}`;
+        if (type.includes("application/json")) {
+          return Response.json({
+            ...result,
+            whatsapp,
+            whatsappOk: sent.ok,
+            whatsappChannel: sent.channel,
+          });
+        }
+        return html(
+          pilotoPage(ac, { ok: result.alert.message }, {
+            offering: result.offering,
+            startsAt: result.startsAt,
+            remaining: result.remaining,
+            message: result.alert.message,
+            whatsapp,
+          }),
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Error";
+        if (type.includes("application/json")) {
+          return Response.json({ error: msg }, { status: 400 });
+        }
+        return html(pilotoPage(ac, { error: msg }));
+      }
+    }
     if (req.method === "GET" && url.pathname === "/") {
       const cat = catalogs(db);
       return html(
@@ -125,8 +196,14 @@ Bun.serve({
       if (req.method === "POST") {
         const form = await readForm(req);
         const w = form.get("week") ?? week;
+        const link = await tpago.createLink({
+          amount: 150_000,
+          currency: "PYG",
+          bookingId: crypto.randomUUID(),
+          description: `Individual ${profe.name} · ${sede.name}`,
+        });
         return redirect(`/reservar/${sede.id}/${profe.id}?week=${encodeURIComponent(w)}`, {
-          ok: "Placeholder: reserva anotada. El pago viene después.",
+          ok: `Pendiente de pago. ${link.url}`,
         });
       }
     }
@@ -208,17 +285,21 @@ Bun.serve({
     const payMatch = url.pathname.match(/^\/reservas\/([^/]+)\/estado$/);
     if (req.method === "POST" && payMatch) {
       const form = await readForm(req);
+      const bookingId = decodeURIComponent(payMatch[1]);
       const status = (form.get("status") ?? "confirmed") as BookingStatus;
-      setBookingStatus(db, decodeURIComponent(payMatch[1]), status);
+      const alert = setBookingStatus(db, bookingId, status);
       const week = form.get("week") ?? "";
       const d = form.get("day") ?? "0";
-      const booking = db.query("SELECT session_id FROM bookings WHERE id = ?").get(decodeURIComponent(payMatch[1])) as
+      const booking = db.query("SELECT session_id FROM bookings WHERE id = ?").get(bookingId) as
         | { session_id: string }
         | null;
       const sid = booking?.session_id ?? "";
-      return redirect(`/sesiones/${sid}?week=${encodeURIComponent(week)}&day=${encodeURIComponent(d)}`, {
-        ok: status === "confirmed" ? "Marcado pagado." : "Marcado pendiente.",
-      });
+      const phone = studentPhone(bookingId);
+      if (phone) await sendPackAlert(phone, alert);
+      const ok =
+        alert?.message ??
+        (status === "confirmed" ? "Marcado pagado." : "Marcado pendiente.");
+      return redirect(`/sesiones/${sid}?week=${encodeURIComponent(week)}&day=${encodeURIComponent(d)}`, { ok });
     }
 
     return new Response("No encontrada", { status: 404 });

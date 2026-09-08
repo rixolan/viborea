@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ManageLayout } from "@/components/manage/ManageLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -18,19 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  Search,
-  UserMinus,
-  Users,
-  Ban,
-  Bell,
-  MoreHorizontal,
-  Clock,
-  MapPin,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Search, Users, MapPin, Ban, MoreHorizontal } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,216 +27,243 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import {
+  DEMO_CLASS_TYPES,
+  DEMO_COURTS,
+  DEMO_LOCATIONS,
+  DEMO_SCHEDULE,
+  DEMO_STUDIO,
+  DEMO_TEACHERS,
+} from "@/data/demo/padel-academy";
+import { courtNoun } from "@/lib/i18n/court";
+import { assertNoOverlap, OverlapError, type SessionInterval } from "@/lib/schedule";
 
-type InstructorRole = 'lead' | 'assistant' | 'staff_instructor' | 'teacher_in_training';
+const WEEK: { key: typeof DEMO_SCHEDULE[number]["day"]; label: string }[] = [
+  { key: "monday", label: "Lun" },
+  { key: "tuesday", label: "Mar" },
+  { key: "wednesday", label: "Mié" },
+  { key: "thursday", label: "Jue" },
+  { key: "friday", label: "Vie" },
+  { key: "saturday", label: "Sáb" },
+  { key: "sunday", label: "Dom" },
+];
 
-const instructorRoleLabels: Record<InstructorRole, string> = {
-  lead: "Lead Instructor",
-  assistant: "Assistant",
-  staff_instructor: "Staff Instructor",
-  teacher_in_training: "Teacher in Training",
-};
+const TIMES = ["08:00", "09:00", "10:00", "11:00", "15:00", "16:00", "17:00", "18:00", "19:00"];
 
-interface ClassOccurrence {
+type PaymentBadge = "pagado" | "pendiente" | "mixto" | "vacio";
+
+interface GridClass {
   id: string;
   name: string;
-  style: string;
   teacher: string;
-  instructorRole: InstructorRole;
+  teacherId: string;
   time: string;
   endTime: string;
-  room: string;
+  courtId: string;
+  courtName: string;
   location: string;
+  locationId: string;
   capacity: number;
   booked: number;
   waitlisted: number;
-  checkedIn: number;
   isCancelled: boolean;
-  isSubbed: boolean;
-  originalTeacher?: string;
+  payment: PaymentBadge;
 }
 
-const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+function endTime(start: string, durationMin: number): string {
+  const [h, m] = start.split(":").map(Number);
+  const total = h * 60 + m + durationMin;
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
 
-const mockSchedule: Record<string, ClassOccurrence[]> = {
-  Mon: [
-    { id: "1", name: "Morning Vinyasa", style: "Vinyasa", teacher: "Maya Patel", instructorRole: "lead", time: "7:00 AM", endTime: "8:15 AM", room: "Main Studio", location: "SOMA", capacity: 25, booked: 22, waitlisted: 2, checkedIn: 0, isCancelled: false, isSubbed: false },
-    { id: "2", name: "Gentle Flow", style: "Hatha", teacher: "James Liu", instructorRole: "lead", time: "9:30 AM", endTime: "10:30 AM", room: "Main Studio", location: "SOMA", capacity: 20, booked: 12, waitlisted: 0, checkedIn: 0, isCancelled: false, isSubbed: false },
-    { id: "3", name: "Power Yoga", style: "Power", teacher: "Sarah Chen", instructorRole: "lead", time: "12:00 PM", endTime: "1:00 PM", room: "Hot Room", location: "SOMA", capacity: 30, booked: 30, waitlisted: 3, checkedIn: 0, isCancelled: false, isSubbed: false },
-    { id: "4", name: "Yin Restore", style: "Yin", teacher: "Ava Kim", instructorRole: "staff_instructor", time: "4:30 PM", endTime: "5:45 PM", room: "Main Studio", location: "SOMA", capacity: 20, booked: 8, waitlisted: 0, checkedIn: 0, isCancelled: false, isSubbed: false },
-    { id: "5", name: "Evening Vinyasa", style: "Vinyasa", teacher: "Maya Patel", instructorRole: "lead", time: "6:00 PM", endTime: "7:15 PM", room: "Main Studio", location: "SOMA", capacity: 25, booked: 20, waitlisted: 0, checkedIn: 0, isCancelled: false, isSubbed: false },
-  ],
-  Tue: [
-    { id: "6", name: "Sunrise Meditation", style: "Meditation", teacher: "Ava Kim", instructorRole: "lead", time: "6:30 AM", endTime: "7:15 AM", room: "Meditation Room", location: "SOMA", capacity: 15, booked: 10, waitlisted: 0, checkedIn: 0, isCancelled: false, isSubbed: false },
-    { id: "7", name: "Hot Vinyasa", style: "Vinyasa", teacher: "Sarah Chen", instructorRole: "lead", time: "9:00 AM", endTime: "10:15 AM", room: "Hot Room", location: "SOMA", capacity: 30, booked: 28, waitlisted: 1, checkedIn: 0, isCancelled: false, isSubbed: false },
-    { id: "8", name: "Ashtanga Primary", style: "Ashtanga", teacher: "James Liu", instructorRole: "lead", time: "12:00 PM", endTime: "1:30 PM", room: "Main Studio", location: "SOMA", capacity: 20, booked: 15, waitlisted: 0, checkedIn: 0, isCancelled: false, isSubbed: true, originalTeacher: "David Park" },
-  ],
-  Wed: [
-    { id: "9", name: "Morning Vinyasa", style: "Vinyasa", teacher: "Maya Patel", instructorRole: "lead", time: "7:00 AM", endTime: "8:15 AM", room: "Main Studio", location: "SOMA", capacity: 25, booked: 19, waitlisted: 0, checkedIn: 0, isCancelled: false, isSubbed: false },
-    { id: "10", name: "Gentle Flow", style: "Hatha", teacher: "James Liu", instructorRole: "teacher_in_training", time: "9:30 AM", endTime: "10:30 AM", room: "Main Studio", location: "SOMA", capacity: 20, booked: 14, waitlisted: 0, checkedIn: 0, isCancelled: true, isSubbed: false },
-  ],
-  Thu: [
-    { id: "11", name: "Hot Vinyasa", style: "Vinyasa", teacher: "Sarah Chen", instructorRole: "lead", time: "9:00 AM", endTime: "10:15 AM", room: "Hot Room", location: "SOMA", capacity: 30, booked: 25, waitlisted: 0, checkedIn: 0, isCancelled: false, isSubbed: false },
-    { id: "12", name: "Restorative", style: "Restorative", teacher: "Ava Kim", instructorRole: "lead", time: "5:30 PM", endTime: "7:00 PM", room: "Main Studio", location: "SOMA", capacity: 18, booked: 16, waitlisted: 0, checkedIn: 0, isCancelled: false, isSubbed: false },
-  ],
-  Fri: [
-    { id: "13", name: "Morning Vinyasa", style: "Vinyasa", teacher: "Maya Patel", instructorRole: "lead", time: "7:00 AM", endTime: "8:15 AM", room: "Main Studio", location: "SOMA", capacity: 25, booked: 17, waitlisted: 0, checkedIn: 0, isCancelled: false, isSubbed: false },
-    { id: "14", name: "Slow Flow", style: "Hatha", teacher: "James Liu", instructorRole: "lead", time: "10:00 AM", endTime: "11:15 AM", room: "Main Studio", location: "SOMA", capacity: 20, booked: 11, waitlisted: 0, checkedIn: 0, isCancelled: false, isSubbed: false },
-  ],
-  Sat: [
-    { id: "15", name: "Weekend Power", style: "Power", teacher: "Sarah Chen", instructorRole: "lead", time: "9:00 AM", endTime: "10:15 AM", room: "Hot Room", location: "SOMA", capacity: 30, booked: 28, waitlisted: 2, checkedIn: 0, isCancelled: false, isSubbed: false },
-    { id: "16", name: "Community Flow", style: "Vinyasa", teacher: "Maya Patel", instructorRole: "lead", time: "11:00 AM", endTime: "12:15 PM", room: "Main Studio", location: "SOMA", capacity: 25, booked: 23, waitlisted: 0, checkedIn: 0, isCancelled: false, isSubbed: false },
-  ],
-  Sun: [
-    { id: "17", name: "Sunday Slow", style: "Yin", teacher: "Ava Kim", instructorRole: "lead", time: "10:00 AM", endTime: "11:30 AM", room: "Main Studio", location: "SOMA", capacity: 20, booked: 18, waitlisted: 0, checkedIn: 0, isCancelled: false, isSubbed: false },
-  ],
+function paymentFor(id: string, booked: number): PaymentBadge {
+  if (booked === 0) return "vacio";
+  const n = id.charCodeAt(id.length - 1) % 3;
+  if (n === 0) return "pagado";
+  if (n === 1) return "pendiente";
+  return "mixto";
+}
+
+function toInterval(row: GridClass, dayOffset: number): SessionInterval {
+  const [sh, sm] = row.time.split(":").map(Number);
+  const [eh, em] = row.endTime.split(":").map(Number);
+  return {
+    id: row.id,
+    courtId: row.courtId,
+    coachStaffId: row.teacherId,
+    startsAt: new Date(Date.UTC(2026, 8, 7 + dayOffset, sh, sm)),
+    endsAt: new Date(Date.UTC(2026, 8, 7 + dayOffset, eh, em)),
+    cancelled: row.isCancelled,
+  };
+}
+
+function buildWeek(): Record<string, GridClass[]> {
+  const week: Record<string, GridClass[]> = {};
+  for (const d of WEEK) week[d.key] = [];
+  for (const slot of DEMO_SCHEDULE) {
+    const offering = DEMO_CLASS_TYPES.find((c) => c.id === slot.class_type_id);
+    const teacher = DEMO_TEACHERS.find((t) => t.profile.id === slot.teacher_id);
+    const location = DEMO_LOCATIONS.find((l) => l.id === slot.location_id);
+    const court = DEMO_COURTS.find((c) => c.id === slot.court_id);
+    const duration = offering?.duration_minutes ?? 60;
+    const booked = Math.min(offering?.default_capacity ?? 1, slot.id.length % ((offering?.default_capacity ?? 1) + 1));
+    week[slot.day].push({
+      id: slot.id,
+      name: offering?.name ?? "Clase",
+      teacher: teacher?.profile.display_name ?? "—",
+      teacherId: slot.teacher_id,
+      time: slot.time,
+      endTime: endTime(slot.time, duration),
+      courtId: slot.court_id,
+      courtName: court?.name ?? slot.court_id,
+      location: location?.name ?? "—",
+      locationId: slot.location_id,
+      capacity: offering?.default_capacity ?? 1,
+      booked,
+      waitlisted: booked >= (offering?.default_capacity ?? 1) ? 1 : 0,
+      isCancelled: false,
+      payment: paymentFor(slot.id, booked),
+    });
+  }
+  for (const d of WEEK) {
+    week[d.key].sort((a, b) => a.time.localeCompare(b.time));
+  }
+  return week;
+}
+
+const PAYMENT_LABEL: Record<PaymentBadge, string> = {
+  pagado: "Pagado",
+  pendiente: "Pendiente",
+  mixto: "Pago mixto",
+  vacio: "Sin reservas",
 };
 
-const availableSubs = [
-  { id: "t1", name: "Maya Patel", specialties: ["Vinyasa", "Power"] },
-  { id: "t2", name: "James Liu", specialties: ["Hatha", "Ashtanga", "Yin"] },
-  { id: "t3", name: "Ava Kim", specialties: ["Yin", "Meditation", "Restorative"] },
-  { id: "t4", name: "Sarah Chen", specialties: ["Vinyasa", "Power", "Hot"] },
-  { id: "t5", name: "David Park", specialties: ["Ashtanga", "Vinyasa"] },
-];
-
 export default function ScheduleManage() {
-  const [selectedDay, setSelectedDay] = useState("Mon");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [subDialogOpen, setSubDialogOpen] = useState(false);
-  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
-  const [addClassDialogOpen, setAddClassDialogOpen] = useState(false);
-  const [selectedClass, setSelectedClass] = useState<ClassOccurrence | null>(null);
-  const [selectedSub, setSelectedSub] = useState("");
-  const [subInstructorRole, setSubInstructorRole] = useState<InstructorRole>("lead");
-  const [notifyStudents, setNotifyStudents] = useState(true);
-  const [schedule, setSchedule] = useState(mockSchedule);
-  const [newClassName, setNewClassName] = useState("");
-  const [newClassTime, setNewClassTime] = useState("");
-  const [newClassTeacher, setNewClassTeacher] = useState("");
-  const [newClassStyle, setNewClassStyle] = useState("");
-  const [newClassInstructorRole, setNewClassInstructorRole] = useState<InstructorRole>("lead");
-  const [newClassRecurring, setNewClassRecurring] = useState(true);
+  const noun = courtNoun(DEMO_STUDIO.locale);
   const { toast } = useToast();
+  const [selectedDay, setSelectedDay] = useState<(typeof WEEK)[number]["key"]>("monday");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [schedule, setSchedule] = useState(buildWeek);
+  const [addOpen, setAddOpen] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<GridClass | null>(null);
+  const [newOffering, setNewOffering] = useState(DEMO_CLASS_TYPES[0]?.id ?? "");
+  const [newTime, setNewTime] = useState("15:00");
+  const [newTeacher, setNewTeacher] = useState(DEMO_TEACHERS[0]?.profile.id ?? "");
+  const [newCourt, setNewCourt] = useState(DEMO_COURTS[0]?.id ?? "");
 
-  const classes = schedule[selectedDay] || [];
-  const filteredClasses = classes.filter(
+  const dayOffset = WEEK.findIndex((d) => d.key === selectedDay);
+  const classes = schedule[selectedDay] ?? [];
+  const filtered = classes.filter(
     (c) =>
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.teacher.toLowerCase().includes(searchQuery.toLowerCase())
+      c.teacher.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.courtName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.location.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
-  const handleSub = () => {
-    if (!selectedClass || !selectedSub) return;
-    const subTeacher = availableSubs.find((t) => t.id === selectedSub);
-    const roleLabel = instructorRoleLabels[subInstructorRole];
+  const courtOptions = useMemo(
+    () =>
+      DEMO_COURTS.map((court) => {
+        const loc = DEMO_LOCATIONS.find((l) => l.id === court.location_id);
+        return { ...court, locationName: loc?.name ?? "" };
+      }),
+    [],
+  );
+
+  const handleAdd = () => {
+    const offering = DEMO_CLASS_TYPES.find((c) => c.id === newOffering);
+    const teacher = DEMO_TEACHERS.find((t) => t.profile.id === newTeacher);
+    const court = DEMO_COURTS.find((c) => c.id === newCourt);
+    const location = DEMO_LOCATIONS.find((l) => l.id === court?.location_id);
+    if (!offering || !teacher || !court || !location) return;
+
+    const row: GridClass = {
+      id: `oneoff-${Date.now()}`,
+      name: offering.name,
+      teacher: teacher.profile.display_name ?? teacher.profile.email,
+      teacherId: teacher.profile.id,
+      time: newTime,
+      endTime: endTime(newTime, offering.duration_minutes),
+      courtId: court.id,
+      courtName: court.name,
+      location: location.name,
+      locationId: location.id,
+      capacity: offering.default_capacity,
+      booked: 0,
+      waitlisted: 0,
+      isCancelled: false,
+      payment: "vacio",
+    };
+
+    try {
+      assertNoOverlap(
+        toInterval(row, dayOffset),
+        classes.map((c) => toInterval(c, dayOffset)),
+      );
+    } catch (err) {
+      const conflict = err instanceof OverlapError ? err.conflicts[0] : null;
+      const kind = conflict?.kind === "coach" ? "entrenador" : noun;
+      toast({
+        title: "No se puede crear la clase",
+        description: `Solape de ${kind} a las ${newTime}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSchedule((prev) => ({
+      ...prev,
+      [selectedDay]: [...(prev[selectedDay] ?? []), row].sort((a, b) => a.time.localeCompare(b.time)),
+    }));
     toast({
-      title: "Sub confirmed",
-      description: `${subTeacher?.name} (${roleLabel}) will teach ${selectedClass.name} at ${selectedClass.time}. ${notifyStudents ? "Students have been notified." : ""}`,
+      title: "Clase añadida",
+      description: `${offering.name} · ${location.name} · ${court.name} · ${teacher.profile.display_name} · ${newTime}`,
     });
-    setSubDialogOpen(false);
-    setSelectedClass(null);
-    setSelectedSub("");
-    setSubInstructorRole("lead");
+    setAddOpen(false);
   };
 
   const handleCancel = () => {
-    if (!selectedClass) return;
-    // Mark class as cancelled in local state
+    if (!cancelTarget) return;
     setSchedule((prev) => ({
       ...prev,
-      [selectedDay]: prev[selectedDay].map((cls) =>
-        cls.id === selectedClass.id ? { ...cls, isCancelled: true } : cls
+      [selectedDay]: prev[selectedDay].map((c) =>
+        c.id === cancelTarget.id ? { ...c, isCancelled: true } : c,
       ),
     }));
-    toast({
-      title: "Class cancelled",
-      description: `${selectedClass.name} at ${selectedClass.time} has been cancelled. ${notifyStudents ? `${selectedClass.booked} students notified.` : ""}`,
-    });
-    setCancelDialogOpen(false);
-    setSelectedClass(null);
-  };
-
-  const handleAddClass = () => {
-    if (!newClassName || !newClassTime || !newClassTeacher) return;
-    const newId = `new-${Date.now()}`;
-    const teacher = availableSubs.find((t) => t.id === newClassTeacher);
-    const endTime = (() => {
-      const [time, period] = newClassTime.split(" ");
-      const [h, m] = time.split(":").map(Number);
-      const hour24 = period === "PM" && h !== 12 ? h + 12 : period === "AM" && h === 12 ? 0 : h;
-      const endHour = hour24 + 1;
-      const endPeriod = endHour >= 12 ? "PM" : "AM";
-      const endH12 = endHour > 12 ? endHour - 12 : endHour === 0 ? 12 : endHour;
-      return `${endH12}:${String(m).padStart(2, "0")} ${endPeriod}`;
-    })();
-    const newClass: ClassOccurrence = {
-      id: newId,
-      name: newClassName,
-      style: newClassStyle || "Vinyasa",
-      teacher: teacher?.name || "TBD",
-      instructorRole: newClassInstructorRole,
-      time: newClassTime,
-      endTime,
-      room: "Main Studio",
-      location: "SOMA",
-      capacity: 25,
-      booked: 0,
-      waitlisted: 0,
-      checkedIn: 0,
-      isCancelled: false,
-      isSubbed: false,
-    };
-    setSchedule((prev) => ({
-      ...prev,
-      [selectedDay]: [...(prev[selectedDay] || []), newClass].sort((a, b) =>
-        a.time.localeCompare(b.time)
-      ),
-    }));
-    const roleLabel = instructorRoleLabels[newClassInstructorRole];
-    toast({
-      title: "Class added",
-      description: `${newClassName} at ${newClassTime} with ${teacher?.name || "TBD"} (${roleLabel})${newClassRecurring ? " — recurring weekly on " + selectedDay : ""}`,
-    });
-    setAddClassDialogOpen(false);
-    setNewClassName("");
-    setNewClassTime("");
-    setNewClassTeacher("");
-    setNewClassStyle("");
-    setNewClassInstructorRole("lead");
-    setNewClassRecurring(true);
+    toast({ title: "Clase cancelada", description: "La planilla madre no cambia." });
+    setCancelTarget(null);
   };
 
   return (
     <ManageLayout>
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Schedule</h1>
-            <p className="text-sm text-muted-foreground mt-1">Manage classes, subs, and cancellations</p>
+            <h1 className="text-2xl font-bold tracking-tight">Grilla semanal</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Sede, {noun}, entrenador, cupos y estado de pago. Planilla madre + excepciones de la semana.
+            </p>
           </div>
-          <Button size="sm" onClick={() => setAddClassDialogOpen(true)}>
+          <Button size="sm" onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4 me-2" />
-            Add Class
+            Añadir clase
           </Button>
         </div>
 
-        {/* Week Navigation */}
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="shrink-0">
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <div className="flex gap-1 overflow-x-auto">
-            {weekDays.map((day) => (
+            {WEEK.map((day) => (
               <Button
-                key={day}
-                variant={selectedDay === day ? "default" : "ghost"}
+                key={day.key}
+                variant={selectedDay === day.key ? "default" : "ghost"}
                 size="sm"
-                onClick={() => setSelectedDay(day)}
+                onClick={() => setSelectedDay(day.key)}
                 className="min-w-[52px]"
               >
-                {day}
+                {day.label}
               </Button>
             ))}
           </div>
@@ -257,92 +272,67 @@ export default function ScheduleManage() {
           </Button>
         </div>
 
-        {/* Search */}
         <div className="relative max-w-sm">
           <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search classes or teachers..."
+            placeholder={`Buscar clase, entrenador o ${noun}...`}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="ps-9"
           />
         </div>
 
-        {/* Class List */}
         <div className="space-y-3">
-          {filteredClasses.length === 0 ? (
+          {filtered.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
-                <p className="text-muted-foreground">No classes scheduled for {selectedDay}</p>
+                <p className="text-muted-foreground">No hay clases este día.</p>
               </CardContent>
             </Card>
           ) : (
-            filteredClasses.map((cls) => (
-              <Card
-                key={cls.id}
-                className={`${cls.isCancelled ? "opacity-60" : ""}`}
-              >
+            filtered.map((cls) => (
+              <Card key={cls.id} className={cls.isCancelled ? "opacity-60" : ""}>
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex gap-4 min-w-0">
-                      {/* Time */}
-                      <div className="shrink-0 w-20 text-center">
+                      <div className="shrink-0 w-16 text-center">
                         <p className="text-sm font-semibold">{cls.time}</p>
                         <p className="text-xs text-muted-foreground">{cls.endTime}</p>
                       </div>
-
-                      {/* Details */}
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="text-sm font-semibold">{cls.name}</h3>
-                          {cls.instructorRole !== "lead" && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                              {instructorRoleLabels[cls.instructorRole]}
-                            </Badge>
-                          )}
                           {cls.isCancelled && (
-                            <Badge variant="destructive" className="text-xs">Cancelled</Badge>
+                            <Badge variant="destructive" className="text-xs">Cancelada</Badge>
                           )}
-                          {cls.isSubbed && (
-                            <Badge variant="outline" className="text-xs border-accent-gold/50 text-accent-gold">
-                              Sub: {cls.teacher}
-                            </Badge>
-                          )}
+                          <Badge
+                            variant={cls.payment === "pagado" ? "default" : "outline"}
+                            className="text-[10px]"
+                          >
+                            {PAYMENT_LABEL[cls.payment]}
+                          </Badge>
                         </div>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
                           <span className="flex items-center gap-1">
                             <Users className="h-3 w-3" />
                             {cls.teacher}
-                            {cls.isSubbed && cls.originalTeacher && (
-                              <span className="line-through ms-1">({cls.originalTeacher})</span>
-                            )}
                           </span>
                           <span className="flex items-center gap-1">
                             <MapPin className="h-3 w-3" />
-                            {cls.room}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {cls.style}
+                            {cls.location} · {cls.courtName}
                           </span>
                         </div>
                       </div>
                     </div>
-
-                    {/* Booking Status + Actions */}
                     <div className="flex items-center gap-3 shrink-0">
                       <div className="text-end">
                         <p className="text-sm font-semibold">
                           {cls.booked}/{cls.capacity}
                         </p>
                         {cls.waitlisted > 0 && (
-                          <p className="text-xs text-accent-gold">+{cls.waitlisted} waitlisted</p>
-                        )}
-                        {cls.checkedIn > 0 && (
-                          <p className="text-xs text-accent-sage">{cls.checkedIn} checked in</p>
+                          <p className="text-xs text-accent-gold">+{cls.waitlisted} lista</p>
                         )}
                       </div>
-
                       {!cls.isCancelled && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -353,32 +343,15 @@ export default function ScheduleManage() {
                           <DropdownMenuContent align="end" className="w-48 rounded-xl">
                             <DropdownMenuItem className="rounded-lg cursor-pointer">
                               <Users className="h-4 w-4 me-2" />
-                              View Roster
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="rounded-lg cursor-pointer"
-                              onClick={() => {
-                                setSelectedClass(cls);
-                                setSubDialogOpen(true);
-                              }}
-                            >
-                              <UserMinus className="h-4 w-4 me-2" />
-                              Find Sub
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="rounded-lg cursor-pointer">
-                              <Bell className="h-4 w-4 me-2" />
-                              Notify Students
+                              Ver roster
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               className="rounded-lg cursor-pointer text-destructive"
-                              onClick={() => {
-                                setSelectedClass(cls);
-                                setCancelDialogOpen(true);
-                              }}
+                              onClick={() => setCancelTarget(cls)}
                             >
                               <Ban className="h-4 w-4 me-2" />
-                              Cancel Class
+                              Cancelar (excepción)
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -392,216 +365,81 @@ export default function ScheduleManage() {
         </div>
       </div>
 
-      {/* Sub Teacher Dialog */}
-      <Dialog open={subDialogOpen} onOpenChange={setSubDialogOpen}>
+      <Dialog open={!!cancelTarget} onOpenChange={() => setCancelTarget(null)}>
         <DialogContent className="sm:max-w-md rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Find a Sub</DialogTitle>
+            <DialogTitle>Cancelar esta clase</DialogTitle>
           </DialogHeader>
-          {selectedClass && (
-            <div className="space-y-4">
-              <div className="p-3 rounded-xl bg-secondary/50">
-                <p className="text-sm font-semibold">{selectedClass.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {selectedDay} {selectedClass.time} — Currently: {selectedClass.teacher}
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Select Substitute Teacher</label>
-                <Select value={selectedSub} onValueChange={setSelectedSub}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose a teacher..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableSubs
-                      .filter((t) => t.name !== selectedClass.teacher)
-                      .map((teacher) => (
-                        <SelectItem key={teacher.id} value={teacher.id}>
-                          <span>{teacher.name}</span>
-                          <span className="text-xs text-muted-foreground ms-2">
-                            ({teacher.specialties.join(", ")})
-                          </span>
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Instructor Role</label>
-                <Select value={subInstructorRole} onValueChange={(v) => setSubInstructorRole(v as InstructorRole)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="lead">Lead Instructor</SelectItem>
-                    <SelectItem value="assistant">Assistant</SelectItem>
-                    <SelectItem value="staff_instructor">Staff Instructor</SelectItem>
-                    <SelectItem value="teacher_in_training">Teacher in Training</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={notifyStudents}
-                  onChange={(e) => setNotifyStudents(e.target.checked)}
-                  className="rounded"
-                />
-                Notify {selectedClass.booked} booked students
-              </label>
-            </div>
-          )}
+          <p className="text-sm text-muted-foreground">
+            Se cancela la occurrence de esta semana. La planilla madre no se modifica.
+          </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSubDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSub} disabled={!selectedSub}>
-              Confirm Sub
-            </Button>
+            <Button variant="outline" onClick={() => setCancelTarget(null)}>Conservar</Button>
+            <Button variant="destructive" onClick={handleCancel}>Cancelar clase</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Cancel Class Dialog */}
-      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-md rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Cancel Class</DialogTitle>
-          </DialogHeader>
-          {selectedClass && (
-            <div className="space-y-4">
-              <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20">
-                <p className="text-sm font-semibold">{selectedClass.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {selectedDay} {selectedClass.time} — {selectedClass.teacher}
-                </p>
-                <p className="text-xs text-destructive mt-1">
-                  {selectedClass.booked} students will be affected
-                </p>
-              </div>
-
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={notifyStudents}
-                  onChange={(e) => setNotifyStudents(e.target.checked)}
-                  className="rounded"
-                />
-                Notify {selectedClass.booked} booked students
-              </label>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCancelDialogOpen(false)}>
-              Keep Class
-            </Button>
-            <Button variant="destructive" onClick={handleCancel}>
-              Cancel Class
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Class Dialog */}
-      <Dialog open={addClassDialogOpen} onOpenChange={setAddClassDialogOpen}>
-        <DialogContent className="sm:max-w-md rounded-2xl">
-          <DialogHeader>
-            <DialogTitle>Add Class to Schedule</DialogTitle>
+            <DialogTitle>Añadir clase</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="p-3 rounded-xl bg-primary/5 border border-primary/20">
-              <p className="text-sm font-medium">Adding to: <span className="font-semibold">{selectedDay}</span></p>
-              <p className="text-xs text-muted-foreground mt-0.5">This class will appear in the weekly schedule</p>
-            </div>
-
             <div className="space-y-2">
-              <label className="text-sm font-medium">Class Name</label>
-              <Input
-                placeholder="e.g. Morning Vinyasa"
-                value={newClassName}
-                onChange={(e) => setNewClassName(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Time</label>
-              <Select value={newClassTime} onValueChange={setNewClassTime}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select time..." />
-                </SelectTrigger>
+              <label className="text-sm font-medium">Offering</label>
+              <Select value={newOffering} onValueChange={setNewOffering}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {["6:00 AM", "7:00 AM", "8:00 AM", "9:00 AM", "9:30 AM", "10:00 AM", "11:00 AM", "12:00 PM", "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM", "4:30 PM", "5:00 PM", "5:30 PM", "6:00 PM", "7:00 PM", "7:30 PM"].map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Teacher</label>
-              <Select value={newClassTeacher} onValueChange={setNewClassTeacher}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a teacher..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableSubs.map((teacher) => (
-                    <SelectItem key={teacher.id} value={teacher.id}>
-                      {teacher.name}
+                  {DEMO_CLASS_TYPES.map((o) => (
+                    <SelectItem key={o.id} value={o.id}>
+                      {o.name} · cupo {o.default_capacity}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
             <div className="space-y-2">
-              <label className="text-sm font-medium">Instructor Role</label>
-              <Select value={newClassInstructorRole} onValueChange={(v) => setNewClassInstructorRole(v as InstructorRole)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+              <label className="text-sm font-medium">Hora</label>
+              <Select value={newTime} onValueChange={setNewTime}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="lead">Lead Instructor</SelectItem>
-                  <SelectItem value="assistant">Assistant</SelectItem>
-                  <SelectItem value="staff_instructor">Staff Instructor</SelectItem>
-                  <SelectItem value="teacher_in_training">Teacher in Training</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Style</label>
-              <Select value={newClassStyle} onValueChange={setNewClassStyle}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select style..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {["Vinyasa", "Hatha", "Power", "Yin", "Restorative", "Ashtanga", "Meditation", "Hot"].map((s) => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  {TIMES.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={newClassRecurring}
-                onChange={(e) => setNewClassRecurring(e.target.checked)}
-                className="rounded"
-              />
-              Recurring weekly on {selectedDay}
-            </label>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Entrenador</label>
+              <Select value={newTeacher} onValueChange={setNewTeacher}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {DEMO_TEACHERS.map((t) => (
+                    <SelectItem key={t.profile.id} value={t.profile.id}>
+                      {t.profile.display_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">{noun[0].toUpperCase() + noun.slice(1)}</label>
+              <Select value={newCourt} onValueChange={setNewCourt}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {courtOptions.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.locationName} · {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddClassDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddClass} disabled={!newClassName || !newClassTime || !newClassTeacher}>
-              Add Class
-            </Button>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Cerrar</Button>
+            <Button onClick={handleAdd}>Crear</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

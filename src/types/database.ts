@@ -1,12 +1,16 @@
-// Tandava Studio Management Platform - TypeScript Types
+// Bandeja / Tandava studio management — TypeScript types
 // Generated from the Supabase schema for type-safe client usage
+
+import { formatMoney } from "@/lib/money";
 
 // ============================================================================
 // ENUMS
 // ============================================================================
 
 export type UserRole = 'owner' | 'admin' | 'teacher' | 'front_desk' | 'student' | 'platform_admin';
-export type BookingStatus = 'confirmed' | 'waitlisted' | 'cancelled' | 'no_show' | 'checked_in' | 'late_cancel';
+export type BookingStatus = 'pending_payment' | 'confirmed' | 'waitlisted' | 'cancelled' | 'no_show' | 'checked_in' | 'late_cancel';
+export type BookingChannel = 'web' | 'whatsapp' | 'admin';
+export type SessionSource = 'template' | 'exception' | 'one_off';
 export type MembershipStatus = 'active' | 'paused' | 'cancelled' | 'expired' | 'past_due';
 export type MembershipBillingCycle = 'weekly' | 'monthly' | 'quarterly' | 'annual';
 export type ClassPackStatus = 'active' | 'expired' | 'exhausted';
@@ -40,6 +44,8 @@ export interface Studio {
   email: string | null;
   phone: string | null;
   timezone: string;
+  /** BCP 47, e.g. es-ES / es-AR / es-PY. Selects pista vs cancha, not the UI language. */
+  locale: string;
   currency: string;
   stripe_account_id: string | null;
   stripe_onboarding_complete: boolean;
@@ -172,6 +178,7 @@ export interface ScheduleRule {
   start_time: string;
   end_time: string;
   room: string | null;
+  court_id: string | null;
   capacity_override: number | null;
   effective_from: string;
   effective_until: string | null;
@@ -182,6 +189,19 @@ export interface ScheduleRule {
   offering?: Offering;
   teacher?: Profile;
   location?: Location;
+  court?: Court;
+}
+
+export interface Court {
+  id: string;
+  studio_id: string;
+  location_id: string;
+  name: string;
+  number: number | null;
+  surface: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ClassOccurrence {
@@ -195,6 +215,8 @@ export interface ClassOccurrence {
   starts_at: string;
   ends_at: string;
   room: string | null;
+  court_id: string | null;
+  source: SessionSource;
   capacity: number;
   is_cancelled: boolean;
   cancellation_reason: string | null;
@@ -220,6 +242,7 @@ export interface ClassOccurrence {
   teacher?: Profile;
   original_teacher?: Profile;
   location?: Location;
+  court?: Court;
   bookings?: Booking[];
 }
 
@@ -245,6 +268,7 @@ export interface Booking {
   class_occurrence_id: string;
   profile_id: string;
   status: BookingStatus;
+  channel?: BookingChannel;
   waitlist_position: number | null;
   membership_id: string | null;
   class_pack_id: string | null;
@@ -2600,16 +2624,12 @@ export interface TaskTemplate {
 // ============================================================================
 
 /**
- * Format cents to currency display string.
- * For locale-aware rendering in React components, prefer `useLocale().formatPrice()`.
- *
- * @param locale - BCP 47 locale code (default: 'en-US')
+ * Format integer minor units to a currency string.
+ * `*_cents` columns store ISO minor units (PYG exponent 0).
+ * For locale-aware rendering in React, prefer `useLocale().formatPrice()`.
  */
 export function formatCents(cents: number, currency: string = 'USD', locale: string = 'en-US'): string {
-  return new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency,
-  }).format(cents / 100);
+  return formatMoney(cents, currency, locale);
 }
 
 export function getFullName(profile: Profile): string {
@@ -2691,6 +2711,7 @@ export interface PublicScheduleRow {
   starts_at: string;
   ends_at: string;
   room: string | null;
+  court_id: string | null;
   offering_name: string;
   location_name: string | null;
   teacher_name: string | null;
@@ -2710,7 +2731,9 @@ export interface Database {
       classes: { Row: ClassDefinition; Insert: Partial<ClassDefinition>; Update: Partial<ClassDefinition> };
       bookings: { Row: Booking; Insert: Partial<Booking>; Update: Partial<Booking> };
       locations: { Row: Location; Insert: Partial<Location>; Update: Partial<Location> };
+      courts: { Row: Court; Insert: Partial<Court>; Update: Partial<Court> };
       offerings: { Row: Offering; Insert: Partial<Offering>; Update: Partial<Offering> };
+      schedule_rules: { Row: ScheduleRule; Insert: Partial<ScheduleRule>; Update: Partial<ScheduleRule> };
       class_occurrences: { Row: ClassOccurrence; Insert: Partial<ClassOccurrence>; Update: Partial<ClassOccurrence> };
       memberships: { Row: Membership; Insert: Partial<Membership>; Update: Partial<Membership> };
       membership_types: { Row: MembershipType; Insert: Partial<MembershipType>; Update: Partial<MembershipType> };

@@ -1,10 +1,5 @@
 /**
- * Demo Landing Page — Tandava Open Source Studio Management
- *
- * The FIRST thing visitors see. Explains what the project is, who it's for,
- * shows features, then invites visitors to explore the platform by choosing a role.
- *
- * Flow: Project intro → Who it's for → Feature showcase → Role picker → FAQ → About
+ * Demo landing — Bandeja
  */
 
 import { useState } from "react";
@@ -144,14 +139,14 @@ interface FAQItem {
 
 const FAQ_ITEMS: FAQItem[] = [
   {
-    question: "Who is Tandava for?",
+    question: "¿Para quién es Bandeja?",
     answer:
-      "Studios with an internal engineering team, technical founder, or trusted dev partner. Developer-led collectives building studio software together. If you don't have someone who can deploy and maintain a web app, this is not ready for you yet — but we're working on making it more accessible over time.",
+      "Academias de pádel con alguien que pueda desplegar y mantener una app web. Fork de Tandava (AGPL-3.0).",
   },
   {
-    question: "Is this actually free?",
+    question: "¿Es gratis?",
     answer:
-      "Yes. Tandava is licensed under AGPL-3.0. You can self-host it forever at no cost. The code is fully open — every line is auditable. If you modify the source and make it available over a network, you share your modifications under the same license.",
+      "Sí. Bandeja está bajo AGPL-3.0. Podés autoalojarlo. Si lo ofrecés en red, las modificaciones se publican bajo la misma licencia.",
   },
   {
     question: "How is this different from MindBody or Momence?",
@@ -425,7 +420,7 @@ export default function Demo() {
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-400" />
               </span>
               <span className="text-sm font-semibold text-white/90">
-                Tandava Open Source Studio Demo
+                Demo de Bandeja
               </span>
             </div>
           </div>
@@ -474,14 +469,14 @@ export default function Demo() {
             </div>
 
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-display font-semibold tracking-tight mb-6 leading-[1.1]">
-              Studio management software you{" "}
-              <span className="text-primary">fork, deploy, and own</span>
+              La grilla de la academia,{" "}
+              <span className="text-primary">bajo control</span>
             </h1>
 
             <p className="text-lg text-muted-foreground leading-relaxed max-w-2xl mb-8">
-              Tandava is open-source scheduling, membership, payment, and
-              analytics software for yoga, pilates, and movement studios. No
-              vendor lock-in. No per-member pricing. Your data stays yours.
+              Bandeja gestiona clases de pádel con entrenador, pista y sede.
+              Packs o clase suelta, cobro adelantado, sin doble reserva.
+              Código abierto, AGPL-3.0.
             </p>
 
             <div className="mb-10 flex flex-wrap gap-3">
@@ -630,14 +625,14 @@ export default function Demo() {
         <div className="max-w-6xl mx-auto px-6 py-16">
           <div className="text-center mb-10">
             <h2 className="text-3xl font-display font-semibold mb-3">
-              Explore the platform
+              Explorar la plataforma
             </h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              This demo loads{" "}
+              Esta demo carga{" "}
               <strong className="text-foreground">{OXATL_STUDIO.name}</strong>,
-              a fictional Austin studio with {OXATL_LOCATIONS.length} locations,{" "}
-              {OXATL_TEACHERS.length} teachers, and {OXATL_CLASS_TYPES.length}{" "}
-              class types. Pick a role to see how Tandava works for everyone.
+              una academia de pádel ficticia con {OXATL_LOCATIONS.length} sedes,{" "}
+              {OXATL_TEACHERS.length} entrenadores y {OXATL_CLASS_TYPES.length}{" "}
+              tipos de clase. Elegí un rol para ver Bandeja.
             </p>
           </div>
 
@@ -870,7 +865,7 @@ export default function Demo() {
       <section className="border-t border-border bg-card/30">
         <div className="max-w-3xl mx-auto px-6 py-14 text-center">
           <p className="text-sm text-muted-foreground">
-            Tandava is open-source software. Built by the community, for the community.
+            Bandeja es software libre (AGPL-3.0), fork de Tandava.
           </p>
         </div>
       </section>
@@ -884,14 +879,13 @@ export default function Demo() {
             Ready to explore?
           </h2>
           <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-            See how Tandava handles scheduling, payments, check-in, and
-            analytics — with real data from a demo studio.
+            Mirá la grilla, los cupos y el estado de pago — con datos de una academia de demo.
           </p>
           <a
             href="#explore"
             className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
           >
-            Choose a Role & Explore
+            Elegir un rol
             <ArrowRight className="w-4 h-4" />
           </a>
         </div>
@@ -903,20 +897,12 @@ export default function Demo() {
       <footer className="border-t border-border py-8 px-6">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">Tandava</span>
+            <span className="font-medium text-foreground">Bandeja</span>
             <span>·</span>
-            <span>Open-source studio management</span>
+            <span>Gestión de academias de pádel</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            AGPL-3.0 · Self-hosted ·{" "}
-            <a
-              href="https://github.com/TaylorONeal/tandava"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-            >
-              GitHub
-            </a>
+            AGPL-3.0 · Origen: Tandava (ver NOTICE)
           </p>
         </div>
       </footer>

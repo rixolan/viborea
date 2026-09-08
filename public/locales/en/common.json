@@ -89,6 +89,11 @@
     "label": "Language",
     "changeLanguage": "Change language"
   },
+  "court": {
+    "pista": "court",
+    "cancha": "court",
+    "label": "Court"
+  },
   "footer": {
     "allRightsReserved": "All rights reserved.",
     "poweredBy": "Powered by",
@@ -107,9 +112,9 @@
     "returnHome": "Return to Home"
   },
   "demo": {
-    "title": "Tandava Open Source Studio Demo",
+    "title": "Bandeja demo",
     "switchRole": "Switch:",
-    "studioOwner": "Studio Owner",
+    "studioOwner": "Academy director",
     "demoMode": "(Demo mode)"
   },
   "contact": {

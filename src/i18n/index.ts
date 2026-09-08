@@ -85,35 +85,21 @@ i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
-    // Fallback to English when a translation is missing
-    fallbackLng: 'en',
-
-    // Only allow languages we have translations for
+    fallbackLng: 'es',
     supportedLngs: SUPPORTED_LANGUAGES.map(l => l.code),
-
-    // Namespace configuration
     ns: [...NAMESPACES],
     defaultNS: 'common',
-
-    // Load translation files from public/locales/{lng}/{ns}.json
     backend: {
       loadPath: '/locales/{{lng}}/{{ns}}.json',
     },
-
-    // Language detection: check localStorage first, then browser, then HTML tag
     detection: {
-      order: ['localStorage', 'navigator', 'htmlTag'],
-      lookupLocalStorage: 'tandava-language',
+      order: ['localStorage', 'htmlTag', 'navigator'],
+      lookupLocalStorage: 'bandeja-language',
       caches: ['localStorage'],
-      // Chinese needs script-aware mapping: default language-only fallback
-      // would send zh-TW/zh-HK users to Simplified Chinese. Route Traditional
-      // regions/scripts to zh-Hant, everything else Chinese to zh (Simplified).
       convertDetectedLanguage: (lng: string) => {
         if (/^zh\b/i.test(lng)) {
           return /hant|tw|hk|mo/i.test(lng) ? 'zh-Hant' : 'zh';
         }
-        // Legacy/alias codes some browsers still report:
-        // 'tl' (Tagalog) → Filipino, 'in' (pre-1989 ISO code) → Indonesian.
         const base = lng.split('-')[0].toLowerCase();
         if (base === 'tl') return 'fil';
         if (base === 'in') return 'id';

@@ -1,14 +1,8 @@
 /**
- * OXATL YOGA - Demo Bookings & Transactions
- *
- * Historical demo data starting late January 2018.
- * Simulates realistic studio growth over time.
- *
- * TO REMOVE FOR PRODUCTION:
- * Delete the entire src/data/demo/ directory
+ * Demo bookings & transactions for Academia Alameda.
  */
 
-import type { BookingStatus, TransactionStatus, TransactionType } from '@/types/database';
+import type { BookingStatus, TransactionStatus, TransactionType } from "@/types/database";
 import {
   OXATL_STUDIO,
   OXATL_MEMBERS,
@@ -19,7 +13,7 @@ import {
   OXATL_MEMBERSHIP_TYPES,
   OXATL_CLASS_PACK_TYPES,
   OXATL_WORKSHOP_TEMPLATES,
-} from './oxatl-yoga';
+} from "./padel-academy";
 
 // ============================================================================
 // DEMO TIME RANGE
@@ -79,6 +73,7 @@ export interface DemoClassOccurrence {
   class_type_id: string;
   teacher_id: string;
   location_id: string;
+  court_id: string;
   capacity: number;
   booked_count: number;
   checked_in_count: number;
@@ -161,8 +156,9 @@ function generateClassOccurrences(): DemoClassOccurrence[] {
           class_type_id: slot.class_type_id,
           teacher_id: slot.teacher_id,
           location_id: slot.location_id,
-          capacity: classType?.default_capacity ?? 25,
-          booked_count: 0, // Will be updated when generating bookings
+          court_id: slot.court_id,
+          capacity: classType?.default_capacity ?? 4,
+          booked_count: 0,
           checked_in_count: 0,
           is_cancelled: isCancelled,
         });

@@ -14,14 +14,13 @@ No es alquiler de canchas al público. No es “reservá 30 minutos conmigo”.
 El producto usable está en `core/`: runtime Bun, SQLite, HTML + Tailwind. Sin React. Admin en `/`. Enlace para alumnos: `/reservar`.
 
 ```bash
-cd core
-bun test
+bun install
 bun run dev
 ```
 
 Abre `http://localhost:3000`.
 
-El árbol raíz sigue siendo el fork de Tandava (referencia de dominio, AGPL). No es el camino del MVP.
+`bun run dev` arranca **core**, no Vite. El árbol raíz sigue siendo el fork de Tandava (referencia de dominio, AGPL). Para esa SPA: `bun run dev:fork` → `http://localhost:8080`.
 
 ---
 
@@ -30,7 +29,7 @@ El árbol raíz sigue siendo el fork de Tandava (referencia de dominio, AGPL). N
 ```bash
 npm install
 echo "VITE_DEMO_MODE=true" > .env.local
-npm run dev
+bun run dev:fork
 ```
 
 `http://localhost:8080` — SPA de investigación. Grilla en `/manage/schedule`.

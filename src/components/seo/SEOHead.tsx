@@ -1,7 +1,7 @@
 import { Helmet } from "react-helmet-async";
 
 interface SEOHeadProps {
-  /** Page title — will be appended with " | Tandava" */
+  /** Page title — will be appended with " | Bandeja" */
   title?: string;
   /** Meta description (max ~155 characters for search results) */
   description?: string;
@@ -18,12 +18,12 @@ interface SEOHeadProps {
 }
 
 const DEFAULTS = {
-  siteName: import.meta.env.VITE_APP_NAME || "Tandava",
-  siteUrl: import.meta.env.VITE_APP_URL || "https://tandavastudio.com",
+  siteName: import.meta.env.VITE_APP_NAME || "Bandeja",
+  siteUrl: import.meta.env.VITE_APP_URL || "https://localhost:8080",
   defaultDescription:
-    "Book yoga classes, workshops, and appointments. Track your practice, connect with teachers, and join our wellness community.",
+    "Bandeja controla la grilla de una academia de pádel: sede, pista, entrenador y cobro adelantado.",
   defaultImage: "/og-image.png",
-  twitterHandle: "@TandavaYoga",
+  twitterHandle: "",
 };
 
 export function SEOHead({

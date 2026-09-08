@@ -1,4 +1,4 @@
-import { MENU_ITEMS, decide } from "./bot";
+import { MENU_ITEMS, decide, replyForIntent, type MenuValue } from "./bot";
 
 export type Env = {
   CHATWOOT_BASE_URL: string;
@@ -38,40 +38,20 @@ async function sendText(env: Env, conversationId: number, content: string) {
   });
 }
 
-async function handleIntent(env: Env, conversationId: number, intent: string) {
+async function handleIntent(env: Env, conversationId: number, intent: MenuValue) {
   const human = env.CHATWOOT_HANDOFF_NAME || "alguien del equipo";
-  switch (intent) {
-    case "confirmar":
-      return sendText(
-        env,
-        conversationId,
-        "Listo: dejamos la clase confirmada. (Sandbox: todavía no toca el calendario real.)",
-      );
-    case "reprogramar":
-      return sendText(
-        env,
-        conversationId,
-        `Podemos mover la clase. Decime día y horario, o tocá «Hablar con alguien». (Sandbox.)`,
-      );
-    case "pagar":
-      return sendText(
-        env,
-        conversationId,
-        "Acá iría el link de pago. En este piloto es solo el texto. Cuando esté el enlace, te llega en este mismo paso.",
-      );
-    case "humano":
-      await cw(env, `/conversations/${conversationId}/assignments`, {
-        assignee_id: Number(env.CHATWOOT_HUMAN_ASSIGNEE_ID || "1"),
-        assignee_type: "User",
-      });
-      return sendText(
-        env,
-        conversationId,
-        `Te paso con ${human}. En un rato te escribe.`,
-      );
-    default:
-      return sendSelect(env, conversationId, "Hola, ¿qué necesitás?");
+  const reply = replyForIntent(intent, human);
+  if (reply.kind === "handoff") {
+    await cw(env, `/conversations/${conversationId}/assignments`, {
+      assignee_id: Number(env.CHATWOOT_HUMAN_ASSIGNEE_ID || "1"),
+      assignee_type: "User",
+    });
+    return sendText(env, conversationId, reply.content);
   }
+  if (reply.kind === "select") {
+    return sendSelect(env, conversationId, reply.content);
+  }
+  return sendText(env, conversationId, reply.content);
 }
 
 export default {

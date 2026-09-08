@@ -104,10 +104,10 @@ export function ManageLayout({ children }: ManageLayoutProps) {
             <div className="h-5 w-px bg-border mx-1" />
             <Link to="/manage" className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <span className="text-sm font-bold text-primary-foreground">T</span>
+                <span className="text-sm font-bold text-primary-foreground">B</span>
               </div>
               <div className="hidden sm:block">
-                <p className="text-sm font-semibold leading-none">Tandava Yoga</p>
+                <p className="text-sm font-semibold leading-none">Bandeja</p>
                 <p className="text-xs text-muted-foreground">{t('studioManagement')}</p>
               </div>
             </Link>

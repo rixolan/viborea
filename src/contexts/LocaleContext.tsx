@@ -21,6 +21,7 @@
 import { createContext, useContext, useCallback, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getIntlLocale } from '@/i18n';
+import { currencyExponent, minorToMajor } from '@/lib/money';
 
 // ============================================================================
 // Types
@@ -91,10 +92,10 @@ interface LocaleContextType {
 }
 
 const DEFAULT_STUDIO_SETTINGS: StudioLocaleSettings = {
-  defaultLocale: 'en',
-  supportedLocales: ['en'],
-  currency: 'USD',
-  timezone: 'America/Chicago',
+  defaultLocale: 'es',
+  supportedLocales: ['es', 'en'],
+  currency: 'EUR',
+  timezone: 'Europe/Madrid',
 };
 
 // ============================================================================
@@ -126,13 +127,13 @@ export function LocaleProvider({ children, studioSettings: studioOverrides }: Lo
   // ---- Currency formatting ----
   const formatPrice = useCallback((cents: number, currencyOverride?: string) => {
     const curr = currencyOverride ?? studioSettings.currency;
+    const exp = currencyExponent(curr);
     return new Intl.NumberFormat(intlLocale, {
       style: 'currency',
       currency: curr,
-      // Omit cents for round numbers (e.g., "$65" not "$65.00")
-      minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
-      maximumFractionDigits: 2,
-    }).format(cents / 100);
+      minimumFractionDigits: exp,
+      maximumFractionDigits: exp,
+    }).format(minorToMajor(cents, curr));
   }, [intlLocale, studioSettings.currency]);
 
   // ---- Date formatting ----

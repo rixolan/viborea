@@ -1,48 +1,26 @@
 /**
- * DEMO MODE — For the live demo site only.
+ * DEMO MODE — Academia Alameda (fictional padel academy).
  *
- * This file powers the interactive demo at demo.tandava.yoga (or wherever you host it).
- * It lets visitors switch between roles (Owner, Admin, Teacher, Front Desk, Student)
- * to experience the platform from different perspectives without real authentication.
- *
- * DEMO STUDIO: Oxatl Yoga (Austin, TX)
- * - Owner: Mariana Trench
- * - Front Desk: Cassia Ray
- * - Teachers: Beyonce Pangolin, Adele Capybara, Travis Jones, etc.
- *
- * HOW TO DISABLE FOR YOUR STUDIO:
- * ──────────────────────────────
- * 1. Set VITE_DEMO_MODE=false in your .env (or just don't set it — it defaults to off)
- * 2. That's it. The DemoPanel won't render, and the DemoProvider passes through normally.
- *
- * You can also safely delete this file, DemoPanel.tsx, and src/data/demo/ entirely
- * if you want to remove demo code from your fork. Just remove the <DemoProvider>
- * wrapper in App.tsx.
+ * VITE_DEMO_MODE=true loads this path. No backend, no production WhatsApp.
  */
 
 import { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 import type { UserRole, Profile, Studio } from '@/types/database';
 import {
-  OXATL_STUDIO,
-  OXATL_OWNER,
-  OXATL_FRONT_DESK,
-  OXATL_TEACHERS,
-  OXATL_MEMBERS,
-  OXATL_STATS,
-} from '@/data/demo/oxatl-yoga';
+  DEMO_STUDIO,
+  DEMO_OWNER,
+  DEMO_FRONT_DESK,
+  DEMO_TEACHERS,
+  DEMO_MEMBERS,
+  DEMO_STATS,
+} from '@/data/demo/padel-academy';
 
-// ============================================================================
-// Check if demo mode is enabled via environment variable
-// ============================================================================
 export const DEMO_MODE_ENABLED = import.meta.env.VITE_DEMO_MODE === 'true';
 
-// ============================================================================
-// Demo Studio
-// ============================================================================
-export const DEMO_STUDIO: Studio = OXATL_STUDIO;
+export { DEMO_STUDIO };
 
 // ============================================================================
-// Demo personas — using Oxatl Yoga staff
+// Demo personas
 // ============================================================================
 export interface DemoPersona {
   role: UserRole;
@@ -54,47 +32,45 @@ export interface DemoPersona {
   profileId: string;
 }
 
-// Pick a sample teacher for the teacher persona
-const sampleTeacher = OXATL_TEACHERS[0]; // Beyonce Pangolin
-// Pick a sample student from members
-const sampleStudent = OXATL_MEMBERS[0];
+const sampleTeacher = DEMO_TEACHERS[0];
+const sampleStudent = DEMO_MEMBERS[0];
 
 export const DEMO_PERSONAS: DemoPersona[] = [
   {
     role: 'owner',
-    label: 'Studio Owner',
-    name: OXATL_OWNER.profile.display_name!,
-    email: OXATL_OWNER.profile.email,
-    profileId: OXATL_OWNER.profile.id,
-    description: 'Full access to everything — settings, financials, analytics, staff management, and all student-facing features.',
-    canAccess: ['Dashboard', 'Schedule', 'Students', 'Teachers', 'Offerings', 'Events', 'Promo Codes', 'Financials', 'Landing Pages', 'Reports', 'Analytics', 'Campaigns', 'Tasks', 'Import', 'Settings', 'All student pages'],
+    label: 'Dirección',
+    name: DEMO_OWNER.profile.display_name!,
+    email: DEMO_OWNER.profile.email,
+    profileId: DEMO_OWNER.profile.id,
+    description: 'Grilla, alumnos, offerings, cobros y excepciones de la semana.',
+    canAccess: ['Dashboard', 'Grilla', 'Alumnos', 'Entrenadores', 'Offerings'],
   },
   {
     role: 'front_desk',
-    label: 'Front Desk',
-    name: OXATL_FRONT_DESK.profile.display_name!,
-    email: OXATL_FRONT_DESK.profile.email,
-    profileId: OXATL_FRONT_DESK.profile.id,
-    description: 'Check students in, process walk-in purchases, manage waitlists, handle day-of operations.',
-    canAccess: ['Dashboard', 'Schedule', 'Students', 'Check-in', 'Tasks', 'All student pages'],
+    label: 'Recepción',
+    name: DEMO_FRONT_DESK.profile.display_name!,
+    email: DEMO_FRONT_DESK.profile.email,
+    profileId: DEMO_FRONT_DESK.profile.id,
+    description: 'Check-in, waitlist y agenda del día.',
+    canAccess: ['Dashboard', 'Grilla', 'Alumnos', 'Check-in'],
   },
   {
     role: 'teacher',
-    label: 'Teacher',
+    label: 'Entrenador',
     name: sampleTeacher.profile.display_name!,
     email: sampleTeacher.profile.email,
     profileId: sampleTeacher.profile.id,
-    description: `View your schedule, manage sub requests, see class rosters, track earnings. Teaches ${sampleTeacher.specialties.join(', ')}.`,
-    canAccess: ['Teach Dashboard', 'My Schedule', 'Sub Requests', 'Earnings', 'All student pages'],
+    description: `Agenda propia y roster. ${sampleTeacher.specialties.join(', ')}.`,
+    canAccess: ['Teach Dashboard', 'Mi horario'],
   },
   {
     role: 'student',
-    label: 'Student',
+    label: 'Alumno',
     name: sampleStudent.profile.display_name!,
     email: sampleStudent.profile.email,
     profileId: sampleStudent.profile.id,
-    description: 'Browse classes, book sessions, manage membership, view practice history, connect with community.',
-    canAccess: ['Schedule', 'My Schedule', 'Studios', 'Instructors', 'Community', 'On-Demand', 'Account'],
+    description: 'Reservar, reprogramar y ver packs.',
+    canAccess: ['Horario', 'Mi horario', 'Cuenta'],
   },
 ];
 
@@ -104,10 +80,10 @@ export const DEMO_PERSONAS: DemoPersona[] = [
 function getProfileForPersona(persona: DemoPersona): Profile {
   // Find the actual profile from demo data
   if (persona.role === 'owner') {
-    return OXATL_OWNER.profile;
+    return DEMO_OWNER.profile;
   }
   if (persona.role === 'front_desk') {
-    return OXATL_FRONT_DESK.profile;
+    return DEMO_FRONT_DESK.profile;
   }
   if (persona.role === 'teacher') {
     return sampleTeacher.profile;
@@ -146,7 +122,7 @@ function getProfileForPersona(persona: DemoPersona): Profile {
 interface DemoContextType {
   isDemoMode: boolean;
   demoStudio: Studio;
-  demoStats: typeof OXATL_STATS;
+  demoStats: typeof DEMO_STATS;
   activePersona: DemoPersona;
   activeProfile: Profile;
   personas: DemoPersona[];
@@ -187,7 +163,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       value={{
         isDemoMode: true,
         demoStudio: DEMO_STUDIO,
-        demoStats: OXATL_STATS,
+        demoStats: DEMO_STATS,
         activePersona,
         activeProfile,
         personas: DEMO_PERSONAS,
@@ -211,7 +187,7 @@ export function useDemo() {
     return {
       isDemoMode: false,
       demoStudio: DEMO_STUDIO,
-      demoStats: OXATL_STATS,
+      demoStats: DEMO_STATS,
       activePersona: defaultPersona,
       activeProfile: getProfileForPersona(defaultPersona),
       personas: DEMO_PERSONAS,
@@ -233,26 +209,26 @@ export function useDemo() {
  * Get all demo teachers for display in teacher lists
  */
 export function getDemoTeachers() {
-  return OXATL_TEACHERS;
+  return DEMO_TEACHERS;
 }
 
 /**
  * Get demo members for display in student/member lists
  */
 export function getDemoMembers(limit?: number) {
-  return limit ? OXATL_MEMBERS.slice(0, limit) : OXATL_MEMBERS;
+  return limit ? DEMO_MEMBERS.slice(0, limit) : DEMO_MEMBERS;
 }
 
 /**
  * Get a specific demo teacher by ID
  */
 export function getDemoTeacherById(id: string) {
-  return OXATL_TEACHERS.find(t => t.profile.id === id);
+  return DEMO_TEACHERS.find(t => t.profile.id === id);
 }
 
 /**
  * Get a specific demo member by ID
  */
 export function getDemoMemberById(id: string) {
-  return OXATL_MEMBERS.find(m => m.profile.id === id);
+  return DEMO_MEMBERS.find(m => m.profile.id === id);
 }

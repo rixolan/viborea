@@ -115,7 +115,7 @@ const Index = () => {
   return (
     <AppLayout>
       <SEOHead
-        title={`${OXATL_STUDIO.name} | Yoga, Pilates & Meditation in Austin`}
+        title={`${OXATL_STUDIO.name} | Pádel`}
         description={OXATL_STUDIO.description}
         canonical="/"
         structuredData={[organizationSchema(), websiteSchema()]}
@@ -134,13 +134,13 @@ const Index = () => {
               <Button asChild size="lg">
                 <Link to="/schedule">
                   <Calendar className="h-5 w-5 me-2" />
-                  Book a Class
+                  Reservar clase
                 </Link>
               </Button>
               {!isLoggedIn && (
                 <Button asChild variant="outline" size="lg">
                   <Link to="/auth/register">
-                    Get Started
+                    Empezar
                     <ArrowRight className="h-4 w-4 ms-2" />
                   </Link>
                 </Button>

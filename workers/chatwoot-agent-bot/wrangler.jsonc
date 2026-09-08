@@ -1,5 +1,6 @@
 {
   "name": "bandeja-chatwoot-bot",
+  "account_id": "707c4355e033f613ab2ba527f1d8e811",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-08",
   "observability": {
@@ -17,6 +18,9 @@
   "env": {
     "academia-dg": {
       "name": "academia-dg-chatwoot-bot",
+      "secrets": {
+        "required": ["CHATWOOT_BASE_URL", "CHATWOOT_ACCESS_TOKEN"]
+      },
       "vars": {
         "CHATWOOT_ACCOUNT_ID": "1",
         "CHATWOOT_INBOX_ID": "2",

@@ -44,8 +44,8 @@ export function ManageLayout({ children }: ManageLayoutProps) {
       {/* Sidebar */}
       <aside className="w-64 border-e border-border bg-card/50 p-4 flex flex-col">
         <div className="mb-6">
-          <h2 className="text-lg font-bold tracking-tight">Studio Manager</h2>
-          <p className="text-xs text-muted-foreground">Oxatl Yoga</p>
+          <h2 className="text-lg font-bold tracking-tight">Administración</h2>
+          <p className="text-xs text-muted-foreground">Academia Alameda</p>
         </div>
 
         <nav className="space-y-1 flex-1">

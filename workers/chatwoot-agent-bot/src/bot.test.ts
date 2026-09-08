@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { asIncoming, decide, isGreeting, norm } from "./bot";
+import {
+  GREETING_PROMPT,
+  asIncoming,
+  decide,
+  isGreeting,
+  matchIntent,
+  norm,
+  replyForIntent,
+} from "./bot";
 
 describe("norm", () => {
   test("strips accents and case", () => {
@@ -52,7 +60,7 @@ describe("asIncoming", () => {
 describe("decide", () => {
   const inbox = "2";
 
-  test("opens the menu on greeting", () => {
+  test("opens the menu on greeting with a sandbox slot", () => {
     expect(
       decide(
         {
@@ -67,7 +75,26 @@ describe("decide", () => {
     ).toEqual({
       action: "menu",
       conversationId: 2,
-      prompt: "Hola, ¿qué necesitás?",
+      prompt: GREETING_PROMPT,
+    });
+  });
+
+  test("maps first-timer and availability titles", () => {
+    const base = {
+      event: "message_created",
+      message_type: "incoming",
+      conversation: { id: 2, inbox_id: 2 },
+      sender: { type: "contact" },
+    };
+    expect(decide({ ...base, content: "Soy nuevo" }, inbox)).toEqual({
+      action: "intent",
+      conversationId: 2,
+      intent: "nuevo",
+    });
+    expect(decide({ ...base, content: "disponibilidad" }, inbox)).toEqual({
+      action: "intent",
+      conversationId: 2,
+      intent: "horarios",
     });
   });
 
@@ -98,5 +125,29 @@ describe("decide", () => {
         inbox,
       ),
     ).toEqual({ action: "ignore", reason: "ignored" });
+  });
+});
+
+describe("matchIntent", () => {
+  test("reads aliases in a sentence", () => {
+    expect(matchIntent(norm("quiero ver los horarios"))).toBe("horarios");
+    expect(matchIntent(norm("precios"))).toBe("nuevo");
+    expect(matchIntent(norm("primera vez"))).toBe("nuevo");
+  });
+});
+
+describe("replyForIntent", () => {
+  test("first-timer pitch and slots keep the list open", () => {
+    expect(replyForIntent("nuevo", "Diego").kind).toBe("select");
+    expect(replyForIntent("nuevo", "Diego").content).toContain("Diego González");
+    expect(replyForIntent("horarios", "Diego").kind).toBe("select");
+    expect(replyForIntent("horarios", "Diego").content).toContain("Mañana 11:00");
+  });
+
+  test("human is a User handoff", () => {
+    expect(replyForIntent("humano", "Diego")).toEqual({
+      kind: "handoff",
+      content: "Te paso con Diego. En un rato te escribe.",
+    });
   });
 });

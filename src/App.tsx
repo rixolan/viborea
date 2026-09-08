@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
 import { AuthProvider } from "@/contexts/AuthContext";
-import { DemoProvider } from "@/contexts/DemoContext";
+import { DemoProvider, DEMO_MODE_ENABLED, DEMO_STUDIO } from "@/contexts/DemoContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { LocaleProvider } from "@/contexts/LocaleContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -28,7 +28,7 @@ class AppErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("[Tandava] Render crash:", error, info.componentStack);
+    console.error("[Bandeja] Render crash:", error, info.componentStack);
   }
 
   render() {
@@ -36,8 +36,8 @@ class AppErrorBoundary extends Component<
       return (
         <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0f0a14", color: "#f5f0e8", fontFamily: "'DM Sans', sans-serif", padding: "2rem" }}>
           <div style={{ maxWidth: "32rem", textAlign: "center" }}>
-            <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "2rem", marginBottom: "1rem" }}>Something went wrong</h1>
-            <p style={{ opacity: 0.7, marginBottom: "1.5rem" }}>Tandava encountered an error during startup.</p>
+            <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "2rem", marginBottom: "1rem" }}>Algo salió mal</h1>
+            <p style={{ opacity: 0.7, marginBottom: "1.5rem" }}>Bandeja encontró un error al arrancar.</p>
             <pre style={{ textAlign: "left", background: "rgba(255,255,255,0.05)", padding: "1rem", borderRadius: "0.5rem", fontSize: "0.75rem", overflow: "auto", maxHeight: "12rem", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
               {this.state.error.message}
               {"\n\n"}
@@ -147,7 +147,14 @@ const App = () => (
   <AppErrorBoundary>
   <HelmetProvider>
     <QueryClientProvider client={queryClient}>
-      <LocaleProvider>
+      <LocaleProvider
+        studioSettings={{
+          defaultLocale: DEMO_MODE_ENABLED ? DEMO_STUDIO.locale : "es",
+          supportedLocales: ["es", "en"],
+          currency: DEMO_MODE_ENABLED ? DEMO_STUDIO.currency : "EUR",
+          timezone: DEMO_MODE_ENABLED ? DEMO_STUDIO.timezone : "Europe/Madrid",
+        }}
+      >
       <DemoProvider>
         <ThemeProvider>
           <AuthProvider>

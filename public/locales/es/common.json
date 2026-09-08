@@ -95,6 +95,11 @@
     "label": "Idioma",
     "changeLanguage": "Cambiar idioma"
   },
+  "court": {
+    "pista": "pista",
+    "cancha": "cancha",
+    "label": "pista"
+  },
   "footer": {
     "allRightsReserved": "Todos los derechos reservados.",
     "poweredBy": "Con la tecnología de",
@@ -113,9 +118,9 @@
     "returnHome": "Volver al inicio"
   },
   "demo": {
-    "title": "Demo del estudio de código abierto Tandava",
+    "title": "Demo de Bandeja",
     "switchRole": "Cambiar:",
-    "studioOwner": "Propietario del estudio",
+    "studioOwner": "Dirección",
     "demoMode": "(Modo demo)"
   },
   "contact": {

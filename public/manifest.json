@@ -1,7 +1,7 @@
 {
-  "name": "Tandava",
-  "short_name": "Tandava",
-  "description": "Open-source studio management for yoga, pilates, and movement studios",
+  "name": "Bandeja",
+  "short_name": "Bandeja",
+  "description": "Gestión de academias de pádel. Grilla, packs, cobro adelantado.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f0a14",
