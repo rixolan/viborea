@@ -31,3 +31,13 @@ coverage
 
 # Subagents workspace artifacts
 subagents/
+
+# Bandeja core (Bun + SQLite)
+core/data/
+
+# Cloudflare Workers
+workers/**/.dev.vars
+workers/**/.wrangler/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

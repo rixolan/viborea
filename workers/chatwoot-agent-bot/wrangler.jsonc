@@ -1,0 +1,28 @@
+{
+  "name": "bandeja-chatwoot-bot",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-08",
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "CHATWOOT_ACCOUNT_ID": "1",
+    "CHATWOOT_INBOX_ID": "1",
+    "CHATWOOT_HUMAN_ASSIGNEE_ID": "1",
+    "CHATWOOT_HANDOFF_NAME": "alguien del equipo"
+  },
+  "secrets": {
+    "required": ["CHATWOOT_BASE_URL", "CHATWOOT_ACCESS_TOKEN"]
+  },
+  "env": {
+    "academia-dg": {
+      "name": "academia-dg-chatwoot-bot",
+      "vars": {
+        "CHATWOOT_ACCOUNT_ID": "1",
+        "CHATWOOT_INBOX_ID": "2",
+        "CHATWOOT_HUMAN_ASSIGNEE_ID": "1",
+        "CHATWOOT_HANDOFF_NAME": "Diego"
+      }
+    }
+  }
+}

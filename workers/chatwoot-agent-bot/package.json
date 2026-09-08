@@ -1,0 +1,16 @@
+{
+  "name": "@bandeja/chatwoot-agent-bot",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:academia-dg": "wrangler deploy --env academia-dg",
+    "test": "bun test",
+    "register": "bun run scripts/register.ts",
+    "types": "wrangler types"
+  },
+  "devDependencies": {
+    "wrangler": "^4.128.0"
+  }
+}
