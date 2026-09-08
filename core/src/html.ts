@@ -2,6 +2,7 @@ import type { Academy, BookingView, Coach, Court, Location, Offering, SessionVie
 import { addDays } from "./db";
 import { dateKey, hhmm } from "./domain/template";
 import { CATEGORY_LABELS, PLAYING_SIDES, SIDE_LABELS, STUDENT_CATEGORIES } from "./domain/student";
+import { selfServeOpen } from "./domain/cutoff";
 import { PLACEHOLDER_HOURS, slotBusy, PLACEHOLDER_PROFES, PLACEHOLDER_SEDES } from "./placeholders";
 const DAYS: { offset: number; label: string }[] = [
   { offset: 0, label: "Lun" },
@@ -67,6 +68,7 @@ export function layout(
     kind === "admin"
       ? `<nav class="flex gap-4 text-sm font-medium text-teal-800">
           <a class="hover:underline" href="/alumnos">Alumnos</a>
+          <a class="hover:underline" href="/ajustes">Ajustes</a>
           <a class="hover:underline" href="/reservar">Enlace para alumnos</a>
         </nav>`
       : stepBar(publicStep ?? 1);
@@ -263,10 +265,16 @@ export function sessionPage(opts: {
   return layout(opts.academy, s.offering_name, body, opts.flash);
 }
 
-function spots(s: SessionView): { left: number; label: string; cls: string; full: boolean } {
+function spots(
+  s: SessionView,
+  cutoffHours?: number,
+): { left: number; label: string; cls: string; full: boolean } {
   const left = Math.max(0, s.capacity - s.booked);
   if (s.cancelled) return { left: 0, label: "Cancelada", cls: "bg-red-100 text-red-800", full: true };
   if (new Date(s.starts_at) < new Date()) return { left: 0, label: "Pasada", cls: "bg-stone-100 text-stone-500", full: true };
+  if (cutoffHours != null && !selfServeOpen(new Date(s.starts_at), cutoffHours)) {
+    return { left: 0, label: "Fuera de plazo", cls: "bg-stone-100 text-stone-500", full: true };
+  }
   if (left === 0) return { left: 0, label: "Completa", cls: "bg-stone-200 text-stone-600", full: true };
   if (left === 1) return { left: 1, label: "1 plaza", cls: "bg-teal-100 text-teal-800", full: false };
   return { left, label: `${left} plazas`, cls: "bg-teal-100 text-teal-800", full: false };
@@ -284,6 +292,7 @@ function weekCalendar(opts: {
   sessions: SessionView[];
   weekParam: string;
   kind: "admin" | "public";
+  cutoffHours?: number;
 }): string {
   const hours = [...new Set(opts.sessions.map((s) => hhmm(new Date(s.starts_at))))].sort();
   if (hours.length === 0) {
@@ -306,7 +315,7 @@ function weekCalendar(opts: {
     .map((hour) => {
       const cells = DAYS.map((d) => {
         const items = byCell.get(`${d.offset}|${hour}`) ?? [];
-        const cards = items.map((s) => sessionCard(s, opts.kind, opts.weekParam, d.offset)).join("");
+        const cards = items.map((s) => sessionCard(s, opts.kind, opts.weekParam, d.offset, opts.cutoffHours)).join("");
         return `<td class="border-b border-stone-100 p-1 align-top">${cards || `<div class="h-8"></div>`}</td>`;
       }).join("");
       return `<tr><th class="sticky left-0 z-10 bg-stone-50 px-2 py-2 text-right text-xs font-semibold text-stone-500">${hour}</th>${cells}</tr>`;
@@ -320,9 +329,15 @@ function weekCalendar(opts: {
   </div>`;
 }
 
-function sessionCard(s: SessionView, kind: "admin" | "public", weekParam: string, day: number): string {
+function sessionCard(
+  s: SessionView,
+  kind: "admin" | "public",
+  weekParam: string,
+  day: number,
+  cutoffHours?: number,
+): string {
   if (kind === "public") {
-    const sp = spots(s);
+    const sp = spots(s, cutoffHours);
     const inner = `<p class="font-semibold leading-tight">${esc(s.offering_name)}</p>
       <p class="text-[11px] text-stone-500">${esc(s.coach_name)}</p>
       <p class="text-[11px] text-stone-500">${esc(s.location_name)} · ${esc(s.court_name)}</p>
@@ -362,6 +377,7 @@ export function publicGridPage(opts: {
     sessions: opts.sessions,
     weekParam,
     kind: "public",
+    cutoffHours: opts.academy.cutoff_hours,
   });
 
   const body = `
@@ -400,12 +416,12 @@ export function publicBookPage(opts: {
   flash?: { ok?: string; error?: string };
 }): string {
   const s = opts.session;
-  const sp = spots(s);
+  const sp = spots(s, opts.academy.cutoff_hours);
   const time = hhmm(new Date(s.starts_at));
   const noun = courtNoun(opts.academy.locale);
   const back = `/reservar?week=${esc(opts.week)}&day=${opts.day}`;
   const form = sp.full
-    ? `<p class="text-sm text-stone-600">Esta clase no tiene plazas.</p>`
+    ? `<p class="text-sm text-stone-600">${sp.label === "Fuera de plazo" ? "Fuera de plazo: ya no se puede reservar." : "Esta clase no tiene plazas."}</p>`
     : `<form method="post" action="/reservar/${esc(s.id)}" class="grid gap-3 max-w-sm">
         <input type="hidden" name="week" value="${esc(opts.week)}">
         <input type="hidden" name="day" value="${opts.day}">
@@ -649,4 +665,18 @@ export function alumnosPage(academy: Academy, students: Student[], flash?: { ok?
     <p class="text-sm text-stone-500">Categoría (principiante, 1–8, profesional) y lado (drive o revés).</p>
     <div class="rounded-3xl bg-white px-5 shadow-sm ring-1 ring-stone-200/80">${rows || `<p class="py-8 text-sm text-stone-500">Todavía no hay alumnos.</p>`}</div>`;
   return layout(academy, "Alumnos", body, flash);
+}
+
+export function ajustesPage(academy: Academy, flash?: { ok?: string; error?: string }): string {
+  const body = `
+    <h1 class="font-display text-3xl">Ajustes</h1>
+    <p class="text-sm text-stone-500">Plazo de auto-reserva y de cancelación con devolución del pack.</p>
+    <form method="post" action="/ajustes" class="max-w-sm space-y-3 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-stone-200/80">
+      <label class="text-sm">Horas antes de la clase
+        <input required type="number" min="1" max="72" name="cutoff_hours" value="${academy.cutoff_hours}" class="mt-1 w-full rounded-lg border px-3 py-2">
+      </label>
+      <p class="text-xs text-stone-500">Default 12. El alumno no reserva ni cancela (con devolución) dentro de ese plazo. El escritorio admin sí puede anotar después.</p>
+      <button class="rounded-lg bg-teal-800 px-4 py-2 text-sm font-medium text-white">Guardar</button>
+    </form>`;
+  return layout(academy, "Ajustes", body, flash);
 }

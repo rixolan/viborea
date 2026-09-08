@@ -5,6 +5,7 @@ import {
   expiryFor,
   offeringKindFromCapacity,
   purchasePack,
+  restoreOnCancel,
 } from "./pack";
 
 const t0 = new Date("2026-09-08T12:00:00.000Z");
@@ -57,5 +58,13 @@ describe("consumo al confirmar", () => {
     expect(() => consumeOnConfirm(expired, t0, "group")).toThrow("venció");
     const empty = { ...pack10(), remaining: 0 };
     expect(() => consumeOnConfirm(empty, t0, "group")).toThrow("no tiene clases");
+  });
+});
+
+describe("devolución al cancelar", () => {
+  it("antes del cutoff suma 1 y no pasa del size", () => {
+    const used = consumeOnConfirm(pack10(), t0, "group").pack;
+    expect(restoreOnCancel(used).remaining).toBe(10);
+    expect(restoreOnCancel(pack10()).remaining).toBe(10);
   });
 });

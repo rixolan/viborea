@@ -8,9 +8,17 @@ export async function migrate(db: Db): Promise<void> {
       applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
-  const id = "001_init";
+  await apply(db, "001_init", async () => {
+    await db.file(join(import.meta.dir, "schema.sql"));
+  });
+  await apply(db, "002_cutoff_hours", async () => {
+    await db`ALTER TABLE academy ADD COLUMN IF NOT EXISTS cutoff_hours INTEGER NOT NULL DEFAULT 12`;
+  });
+}
+
+async function apply(db: Db, id: string, run: () => Promise<void>): Promise<void> {
   const done = await db`SELECT id FROM schema_migrations WHERE id = ${id}`;
   if (done.length) return;
-  await db.file(join(import.meta.dir, "schema.sql"));
+  await run();
   await db`INSERT INTO schema_migrations (id) VALUES (${id})`;
 }

@@ -6,6 +6,7 @@ import {
   getSession,
   mondayOf,
   publicBook,
+  selfServeCancel,
   sessionBookings,
   setBookingStatus,
   weekSessions,
@@ -61,6 +62,16 @@ export async function handleApi(req: Request, db: Db): Promise<Response | null> 
         side: parseSide(body.side),
       });
       return json({ status, message: status === "waitlisted" ? "Lista de espera." : "Reserva pendiente de pago." });
+    } catch (err) {
+      return json({ error: err instanceof Error ? err.message : "Error" }, 400);
+    }
+  }
+
+  const cancelMatch = url.pathname.match(/^\/api\/bookings\/([^/]+)\/cancel$/);
+  if (req.method === "POST" && cancelMatch) {
+    try {
+      await selfServeCancel(db, decodeURIComponent(cancelMatch[1]));
+      return json({ message: "Reserva cancelada." });
     } catch (err) {
       return json({ error: err instanceof Error ? err.message : "Error" }, 400);
     }

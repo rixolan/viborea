@@ -3,7 +3,8 @@ CREATE TABLE academy (
   name TEXT NOT NULL,
   locale TEXT NOT NULL,
   currency TEXT NOT NULL,
-  timezone TEXT NOT NULL
+  timezone TEXT NOT NULL,
+  cutoff_hours INTEGER NOT NULL DEFAULT 12
 );
 
 CREATE TABLE locations (

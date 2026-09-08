@@ -7,19 +7,28 @@ import {
   consumeOnConfirm,
   offeringKindFromCapacity,
   purchasePack as newPack,
+  restoreOnCancel,
   type ClassPack,
   type PackAlert,
   type PackSize,
 } from "./domain/pack";
 import { parseCategory, parseSide, type PlayingSide, type StudentCategory } from "./domain/student";
-import type { BookingStatus } from "./domain/types";
+import { OCCUPYING_BOOKING_STATUSES, type BookingStatus } from "./domain/types";
 import { OverlapError } from "./domain/types";
+import { cutoffMessage, DEFAULT_CUTOFF_HOURS, parseCutoffHours, selfServeOpen } from "./domain/cutoff";
 import { connect, type Db } from "./db/pg";
 import { migrate } from "./db/migrate";
 
 export type { Db };
 
-export type Academy = { id: string; name: string; locale: string; currency: string; timezone: string };
+export type Academy = {
+  id: string;
+  name: string;
+  locale: string;
+  currency: string;
+  timezone: string;
+  cutoff_hours: number;
+};
 export type Location = { id: string; name: string };
 export type Court = { id: string; location_id: string; name: string; number: number };
 export type Coach = { id: string; name: string };
@@ -143,7 +152,21 @@ export async function openDb(url = process.env.DATABASE_URL): Promise<Db> {
 export async function academy(db: Db): Promise<Academy> {
   const [row] = await db`SELECT * FROM academy LIMIT 1`;
   if (!row) throw new Error("Academy not seeded");
-  return row as Academy;
+  const hours = num(row.cutoff_hours);
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    locale: String(row.locale),
+    currency: String(row.currency),
+    timezone: String(row.timezone),
+    cutoff_hours: hours > 0 ? hours : DEFAULT_CUTOFF_HOURS,
+  };
+}
+
+export async function updateCutoffHours(db: Db, raw: string | number): Promise<number> {
+  const hours = parseCutoffHours(raw);
+  await db`UPDATE academy SET cutoff_hours = ${hours}`;
+  return hours;
 }
 
 export async function catalogs(db: Db) {
@@ -380,7 +403,10 @@ export async function publicBook(
 ): Promise<BookingStatus> {
   const [session] = await db`SELECT starts_at, cancelled FROM sessions WHERE id = ${sessionId}`;
   if (!session || flag(session.cancelled)) throw new Error("Sesión inexistente o cancelada");
-  if (new Date(iso(session.starts_at)) < new Date()) throw new Error("Ese horario ya pasó");
+  const startsAt = new Date(iso(session.starts_at));
+  if (startsAt < new Date()) throw new Error("Ese horario ya pasó");
+  const ac = await academy(db);
+  if (!selfServeOpen(startsAt, ac.cutoff_hours)) throw new Error(cutoffMessage(ac.cutoff_hours));
   const student = await findOrCreateStudent(db, name, phone, extra);
   return bookStudent(db, sessionId, student.id, "web");
 }
@@ -465,6 +491,10 @@ export async function studentAlerts(
 export async function setBookingStatus(db: Db, bookingId: string, status: BookingStatus): Promise<PackAlert | null> {
   const [booking] = await db`SELECT id, session_id, student_id, status, pack_id FROM bookings WHERE id = ${bookingId}`;
   if (!booking) throw new Error("Reserva inexistente");
+  if (status === "cancelled") {
+    await applyCancel(db, booking, false);
+    return null;
+  }
   if (status !== "confirmed" || booking.status === "confirmed") {
     await db`UPDATE bookings SET status = ${status} WHERE id = ${bookingId}`;
     return null;
@@ -483,6 +513,35 @@ export async function setBookingStatus(db: Db, bookingId: string, status: Bookin
   await db`UPDATE bookings SET status = ${status}, pack_id = ${next.id} WHERE id = ${bookingId}`;
   await saveAlert(db, alert, now);
   return alert;
+}
+
+export async function selfServeCancel(db: Db, bookingId: string): Promise<void> {
+  const [booking] = await db`SELECT id, session_id, student_id, status, pack_id FROM bookings WHERE id = ${bookingId}`;
+  if (!booking) throw new Error("Reserva inexistente");
+  await applyCancel(db, booking, true);
+}
+
+async function applyCancel(
+  db: Db,
+  booking: { id: unknown; session_id: unknown; student_id: unknown; status: unknown; pack_id: unknown },
+  selfServe: boolean,
+): Promise<void> {
+  if (booking.status === "cancelled") return;
+  const [session] = await db`SELECT starts_at FROM sessions WHERE id = ${booking.session_id as string}`;
+  if (!session) throw new Error("Sesión inexistente");
+  const ac = await academy(db);
+  const open = selfServeOpen(new Date(iso(session.starts_at)), ac.cutoff_hours);
+  if (selfServe && !open) throw new Error(cutoffMessage(ac.cutoff_hours));
+  const occupying = OCCUPYING_BOOKING_STATUSES.has(booking.status as BookingStatus);
+  const packId = booking.pack_id as string | null;
+  if (occupying && packId && open) {
+    const [row] = await db`SELECT * FROM packs WHERE id = ${packId}`;
+    if (row) {
+      const next = restoreOnCancel(packFromRow(row as Parameters<typeof packFromRow>[0]));
+      await db`UPDATE packs SET remaining = ${next.remaining} WHERE id = ${next.id}`;
+    }
+  }
+  await db`UPDATE bookings SET status = ${"cancelled"} WHERE id = ${booking.id as string}`;
 }
 
 export { OverlapError, mondayOf, dateKey, addDays };

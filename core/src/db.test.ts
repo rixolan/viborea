@@ -3,6 +3,7 @@ import { OverlapError } from "./domain/types";
 import {
   activePack,
   addDays,
+  academy,
   buyPack,
   createSession,
   ensureWeek,
@@ -11,6 +12,7 @@ import {
   publicBook,
   setBookingStatus,
   studentAlerts,
+  updateCutoffHours,
   weekSessions,
 } from "./db";
 import { seedIfEmpty } from "./seed";
@@ -73,6 +75,19 @@ describe.skipIf(!url)("paquete de 10", () => {
     expect(pack?.remaining).toBe(9);
     const alerts = await studentAlerts(db, String(student.id));
     expect(alerts.at(-1)?.message).toContain("Te quedan 9");
+    await db.end();
+  });
+});
+
+describe.skipIf(!url)("cutoff por academia", () => {
+  it("persiste las horas de plazo", async () => {
+    const db = await openDb(url);
+    await seedIfEmpty(db);
+    expect((await academy(db)).cutoff_hours).toBeGreaterThan(0);
+    await updateCutoffHours(db, 24);
+    expect((await academy(db)).cutoff_hours).toBe(24);
+    await updateCutoffHours(db, 12);
+    expect((await academy(db)).cutoff_hours).toBe(12);
     await db.end();
   });
 });

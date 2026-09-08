@@ -76,6 +76,10 @@ export function consumeOnConfirm(
   return { pack: next, alert: consumedAlert(next) };
 }
 
+export function restoreOnCancel(pack: ClassPack): ClassPack {
+  return { ...pack, remaining: Math.min(pack.size, pack.remaining + 1) };
+}
+
 export function consumedAlert(pack: ClassPack): PackAlert {
   const buyAgain = pack.remaining === 0;
   const used = `${pack.size - pack.remaining} de ${pack.size}`;

@@ -12,6 +12,7 @@ import {
   openDb,
   sessionBookings,
   setBookingStatus,
+  updateCutoffHours,
   updateStudent,
   weekSessions,
 } from "./db";
@@ -24,9 +25,11 @@ import {
   sessionPage,
   pilotoPage,
   alumnosPage,
+  ajustesPage,
 } from "./html";
 import { PLACEHOLDER_PROFES, PLACEHOLDER_SEDES, findProfe, findSede } from "./placeholders";
 import { seedIfEmpty, alignCatalog } from "./seed";
+import { CutoffError } from "./domain/cutoff";
 import type { BookingStatus } from "./domain/types";
 import { parseCategory, parseSide } from "./domain/student";
 import { TpagoClient, configFromEnv, handleTpagoHook } from "./payments/tpago";
@@ -200,6 +203,19 @@ Bun.serve({
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Error";
         return redirect("/alumnos", { error: msg });
+      }
+    }
+    if (req.method === "GET" && url.pathname === "/ajustes") {
+      return html(ajustesPage(ac, flash));
+    }
+    if (req.method === "POST" && url.pathname === "/ajustes") {
+      const form = await readForm(req);
+      try {
+        const hours = await updateCutoffHours(db, form.get("cutoff_hours") ?? "");
+        return redirect("/ajustes", { ok: `Plazo: ${hours} h antes de la clase.` });
+      } catch (err) {
+        const msg = err instanceof CutoffError || err instanceof Error ? err.message : "Error";
+        return redirect("/ajustes", { error: msg });
       }
     }
     if (req.method === "GET" && url.pathname === "/") {
