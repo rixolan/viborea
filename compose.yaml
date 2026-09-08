@@ -17,8 +17,11 @@ services:
       - "127.0.0.1:5432:5432"
 
   app:
-    build: ./core
-    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_CLERK_PUBLISHABLE_KEY: ${NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-${VITE_CLERK_PUBLISHABLE_KEY:-}}
     environment:
       DATABASE_URL: postgres://bandeja:${POSTGRES_PASSWORD:-bandeja}@db:5432/bandeja
       PORT: "8080"
@@ -30,30 +33,18 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=bandeja-2ryryu
-      - traefik.http.routers.viborea-book.rule=(Host(`viborea.com`) || Host(`www.viborea.com`)) && PathPrefix(`/reservar`)
-      - traefik.http.routers.viborea-book.entrypoints=web
-      - traefik.http.routers.viborea-book.middlewares=redirect-to-https@file
-      - traefik.http.routers.viborea-book.priority=200
-      - traefik.http.routers.viborea-book.service=viborea-book
-      - traefik.http.services.viborea-book.loadbalancer.server.port=8080
-      - traefik.http.routers.viborea-booksecure.rule=(Host(`viborea.com`) || Host(`www.viborea.com`)) && PathPrefix(`/reservar`)
-      - traefik.http.routers.viborea-booksecure.entrypoints=websecure
-      - traefik.http.routers.viborea-booksecure.tls=true
-      - traefik.http.routers.viborea-booksecure.priority=200
-      - traefik.http.routers.viborea-booksecure.service=viborea-booksecure
-      - traefik.http.services.viborea-booksecure.loadbalancer.server.port=8080
-
-  web:
-    build: ./web
-    restart: unless-stopped
-    environment:
-      NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
-      NUXT_CLERK_SECRET_KEY: ${NUXT_CLERK_SECRET_KEY:-}
-      PORT: "8081"
-      NITRO_PORT: "8081"
-      NITRO_HOST: "0.0.0.0"
-    expose:
-      - "8081"
+      - traefik.http.routers.viborea.rule=Host(`viborea.com`) || Host(`www.viborea.com`)
+      - traefik.http.routers.viborea.entrypoints=web
+      - traefik.http.routers.viborea.middlewares=redirect-to-https@file
+      - traefik.http.routers.viborea.priority=10
+      - traefik.http.routers.viborea.service=viborea
+      - traefik.http.services.viborea.loadbalancer.server.port=8080
+      - traefik.http.routers.viboreasecure.rule=Host(`viborea.com`) || Host(`www.viborea.com`)
+      - traefik.http.routers.viboreasecure.entrypoints=websecure
+      - traefik.http.routers.viboreasecure.tls=true
+      - traefik.http.routers.viboreasecure.priority=10
+      - traefik.http.routers.viboreasecure.service=viboreasecure
+      - traefik.http.services.viboreasecure.loadbalancer.server.port=8080
 
 volumes:
   pgdata:

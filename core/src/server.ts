@@ -33,7 +33,11 @@ import { TpagoClient, configFromEnv, handleTpagoHook } from "./payments/tpago";
 import { configFromEnv as whatsappConfig, notifyReservation } from "./notify/whatsapp";
 import { pilotoReserva } from "./piloto";
 import type { PackAlert } from "./domain/pack";
+import { handleApi } from "./api";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
+const DIST = join(import.meta.dir, "../../web/dist");
 const db = await openDb();
 await seedIfEmpty(db);
 await alignCatalog(db);
@@ -106,6 +110,16 @@ Bun.serve({
     }
     const { monday, day } = parseWeek(url);
     await ensureWeek(db, monday);
+    const apiRes = await handleApi(req, db);
+    if (apiRes) return apiRes;
+    if (existsSync(DIST) && req.method === "GET" && !url.pathname.startsWith("/piloto")) {
+      const rel = url.pathname === "/" ? "index.html" : url.pathname.replace(/^\//, "");
+      const asset = Bun.file(join(DIST, rel));
+      if (rel.includes(".") && (await asset.exists())) return new Response(asset);
+      return new Response(Bun.file(join(DIST, "index.html")), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
     const ac = await academy(db);
     const flash = flashOf(url);
     if (req.method === "GET" && url.pathname === "/piloto") {
