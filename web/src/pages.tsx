@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { SignIn, useAuth } from "@clerk/clerk-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { CreateOrganization, SignIn, SignUp, useAuth } from "@clerk/clerk-react";
 import { api, type Session, type SessionDetail } from "./api";
+import { RequireAcademia, RequireAuth } from "./auth";
 import { Badge, Button, Card, Input } from "./ui";
 
 function mondayISO(d = new Date()) {
@@ -33,6 +34,9 @@ export function Landing() {
           <Link to="/entrar" className="inline-flex h-11 items-center rounded-lg border border-stone-300 px-5 text-sm font-medium">
             Entrar
           </Link>
+          <Link to="/registro" className="inline-flex h-11 items-center rounded-lg px-5 text-sm font-medium text-stone-600 underline">
+            Registrar academia
+          </Link>
         </div>
       </section>
       <section className="border-t border-stone-200 bg-white">
@@ -63,22 +67,43 @@ export function Entrar() {
   return (
     <div className="mx-auto max-w-md py-8">
       <h1 className="mb-6 text-2xl font-semibold">Entrar</h1>
-      <SignIn routing="hash" />
+      <SignIn routing="hash" forceRedirectUrl="/academia" />
+      <p className="mt-4 text-sm text-stone-600">
+        ¿Academia nueva?{" "}
+        <Link to="/registro" className="underline">
+          Registrarse
+        </Link>
+      </p>
     </div>
   );
 }
 
-function ClerkGate({ children }: { children: ReactNode }) {
-  const { isLoaded, isSignedIn } = useAuth();
-  if (!isLoaded) return <p className="text-sm text-stone-500">Cargando…</p>;
-  if (!isSignedIn) return <Navigate to="/entrar" replace />;
-  return children;
+export function Registro() {
+  const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+  if (!key) {
+    return <p className="text-sm text-stone-600">Falta VITE_CLERK_PUBLISHABLE_KEY.</p>;
+  }
+  return (
+    <div className="mx-auto max-w-md py-8">
+      <h1 className="mb-2 text-2xl font-semibold">Registrar academia</h1>
+      <p className="mb-6 text-sm text-stone-600">Después creás el espacio de tu academia.</p>
+      <SignUp routing="hash" forceRedirectUrl="/academia/nueva" />
+    </div>
+  );
 }
 
-function RequireAuth({ children }: { children: ReactNode }) {
-  if (!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) return children;
-  return <ClerkGate>{children}</ClerkGate>;
+export function AcademiaNueva() {
+  return (
+    <RequireAuth>
+      <div className="mx-auto max-w-md py-8">
+        <h1 className="mb-2 text-2xl font-semibold">Tu academia</h1>
+        <p className="mb-6 text-sm text-stone-600">Nombre del club o escuela. Quedás como admin.</p>
+        <CreateOrganization afterCreateOrganizationUrl="/academia" />
+      </div>
+    </RequireAuth>
+  );
 }
+
 
 function WeekNav({ monday, onMonday }: { monday: string; onMonday: (v: string) => void }) {
   const d = new Date(`${monday}T00:00:00.000Z`);
@@ -266,7 +291,7 @@ export function Academia() {
   }, [monday]);
   const shown = sessions.filter((s) => !coachId || s.coach_id === coachId);
   return (
-    <RequireAuth>
+    <RequireAcademia>
       <div className="space-y-6">
         <h1 className="text-2xl font-semibold">Academia</h1>
         <p className="text-sm text-stone-600">Grilla de la semana. Filtrá por profe si hace falta.</p>
@@ -294,12 +319,13 @@ export function Academia() {
           )}
         />
       </div>
-    </RequireAuth>
+    </RequireAcademia>
   );
 }
 
 export function AcademiaSesion() {
   const { id } = useParams();
+  const { getToken } = useAuth();
   const [data, setData] = useState<SessionDetail | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   async function load() {
@@ -310,14 +336,15 @@ export function AcademiaSesion() {
     load().catch((e) => setMsg(e.message));
   }, [id]);
   async function pay(bookingId: string, status: string) {
-    const r = await api.setStatus(bookingId, status);
+    const token = (await getToken()) ?? undefined;
+    const r = await api.setStatus(bookingId, status, token);
     setMsg(r.message);
     await load();
   }
   if (!data) return <p className="text-sm text-stone-500">{msg ?? "Cargando…"}</p>;
   const s = data.session;
   return (
-    <RequireAuth>
+    <RequireAcademia>
       <div className="space-y-4">
         <Link to="/academia" className="text-sm text-stone-500">
           ← Grilla
@@ -358,6 +385,6 @@ export function AcademiaSesion() {
           </ul>
         </Card>
       </div>
-    </RequireAuth>
+    </RequireAcademia>
   );
 }

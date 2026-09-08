@@ -113,11 +113,11 @@ SPA routes: `/`, `/entrar`, `/reservar`, `/reservar/:id`, `/jugador`, `/academia
 If `web/dist` exists, GET (except `/piloto`) serves the SPA. Leftover HTML in `core/src/html.ts` is fallback for local-without-dist and `/piloto`. Do not add new HTML pages; add React + `/api`.
 
 ## Data
-
 - Schema: `core/src/db/schema.sql`. Additive changes: new id in `core/src/db/migrate.ts`.
 - Boot: `openDb` → migrate → `seedIfEmpty` → `alignCatalog`.
 - Production DB name/user: `viborea`. Compose volume: `viborea_pgdata`. Do not publish Postgres to the internet.
-- No `studio_id` yet: one academy per deployment. Do not pretend multi-tenant billing exists.
+- One academy per Postgres. Who may open `/academia`: Clerk Organization (ADR 0002). Not `{slug}.viborea.com` yet.
+- Do not add `academy_id` only to decorate URLs.
 
 ## Deploy (production)
 

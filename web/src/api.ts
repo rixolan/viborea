@@ -49,9 +49,10 @@ export const api = {
   session: (id: string) => req<SessionDetail>(`/api/sessions/${id}`),
   book: (input: { sessionId: string; name: string; phone: string; category?: string; side?: string }) =>
     req<{ status: string; message?: string }>("/api/book", { method: "POST", body: JSON.stringify(input) }),
-  setStatus: (bookingId: string, status: string) =>
+  setStatus: (bookingId: string, status: string, token?: string) =>
     req<{ message: string }>(`/api/bookings/${bookingId}/status`, {
       method: "POST",
       body: JSON.stringify({ status }),
+      headers: token ? { authorization: `Bearer ${token}` } : {},
     }),
 };

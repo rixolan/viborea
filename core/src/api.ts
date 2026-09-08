@@ -13,6 +13,7 @@ import {
 } from "./db";
 import { parseCategory, parseSide } from "./domain/student";
 import type { BookingStatus } from "./domain/types";
+import { requireAcademy } from "./auth";
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status });
@@ -79,6 +80,8 @@ export async function handleApi(req: Request, db: Db): Promise<Response | null> 
 
   const payMatch = url.pathname.match(/^\/api\/bookings\/([^/]+)\/status$/);
   if (req.method === "POST" && payMatch) {
+    const denied = await requireAcademy(req);
+    if (denied) return denied;
     const body = (await req.json()) as { status?: BookingStatus };
     try {
       const alert = await setBookingStatus(db, decodeURIComponent(payMatch[1]), body.status ?? "confirmed");
