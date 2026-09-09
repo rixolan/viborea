@@ -29,7 +29,13 @@ export type Academy = {
   timezone: string;
   cutoff_hours: number;
 };
-export type Location = { id: string; name: string; address: string | null; maps_url: string | null };
+export type Location = {
+  id: string;
+  name: string;
+  address: string | null;
+  maps_url: string | null;
+  image_url: string | null;
+};
 export type Court = { id: string; location_id: string; name: string; number: number };
 export type Coach = { id: string; name: string };
 export type Offering = {

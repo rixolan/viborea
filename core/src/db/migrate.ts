@@ -18,6 +18,9 @@ export async function migrate(db: Db): Promise<void> {
     await db`ALTER TABLE locations ADD COLUMN IF NOT EXISTS address TEXT`;
     await db`ALTER TABLE locations ADD COLUMN IF NOT EXISTS maps_url TEXT`;
   });
+  await apply(db, "004_location_image", async () => {
+    await db`ALTER TABLE locations ADD COLUMN IF NOT EXISTS image_url TEXT`;
+  });
 }
 
 async function apply(db: Db, id: string, run: () => Promise<void>): Promise<void> {

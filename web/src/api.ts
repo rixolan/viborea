@@ -15,7 +15,13 @@ export type Session = {
   cancelled: number;
 };
 
-export type Location = { id: string; name: string; address?: string | null; maps_url?: string | null };
+export type Location = {
+  id: string;
+  name: string;
+  address?: string | null;
+  maps_url?: string | null;
+  image_url?: string | null;
+};
 export type Coach = { id: string; name: string };
 export type Court = { id: string; location_id: string; name: string; number: number };
 export type Offering = { id: string; name: string; duration_minutes: number; capacity: number; price: number };

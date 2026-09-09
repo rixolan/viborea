@@ -11,7 +11,8 @@ CREATE TABLE locations (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   address TEXT,
-  maps_url TEXT
+  maps_url TEXT,
+  image_url TEXT
 );
 
 CREATE TABLE courts (

@@ -31,10 +31,10 @@ export async function seedIfEmpty(db: Db): Promise<void> {
 
   await db.begin(async (tx) => {
     await tx`INSERT INTO academy (id, name, locale, currency, timezone) VALUES ('academy-alameda', 'Academia Alameda', 'es-PY', 'PYG', 'America/Asuncion')`;
-    await tx`INSERT INTO locations (id, name, address, maps_url) VALUES
-      ('loc-costanera', 'Lomas', null, null),
-      ('loc-parque', 'Elite Padel', 'Av. Primer Presidente, Asunción', 'https://maps.app.goo.gl/p2oQg1pMPGXXMmi8A'),
-      ('loc-ribera', 'Habana', null, null)`;
+    await tx`INSERT INTO locations (id, name, address, maps_url, image_url) VALUES
+      ('loc-costanera', 'Lomas Padel', 'Av. Dr. Felipe Molas López Esquina, Asunción', 'https://www.google.com/maps/search/?api=1&query=Lomas+Padel+Av.+Dr.+Felipe+Molas+López+Asunción', 'https://images.unsplash.com/photo-1554068865-24cecd4e34b8?auto=format&fit=crop&w=800&h=500&q=80'),
+      ('loc-parque', 'Elite Padel Bar', 'Av. Primer Presidente, Asunción', 'https://maps.app.goo.gl/p2oQg1pMPGXXMmi8A', 'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=800&h=500&q=80'),
+      ('loc-ribera', 'Segurola y Habana Padel Center', 'Capitán Elías Ayala, Asunción', 'https://www.google.com/maps/search/?api=1&query=Segurola+y+Habana+Padel+Center+Capitan+Elias+Ayala+Asunción', 'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&h=500&q=80')`;
 
     const courts: [string, string, string, number][] = [];
     for (let n = 1; n <= 6; n++) courts.push([`court-costanera-${n}`, "loc-costanera", `Cancha ${n}`, n]);
@@ -81,9 +81,24 @@ export async function seedIfEmpty(db: Db): Promise<void> {
 }
 
 export async function alignCatalog(db: Db): Promise<void> {
-  await db`UPDATE locations SET name = 'Lomas' WHERE id = 'loc-costanera'`;
-  await db`UPDATE locations SET name = 'Elite Padel', address = 'Av. Primer Presidente, Asunción', maps_url = 'https://maps.app.goo.gl/p2oQg1pMPGXXMmi8A' WHERE id = 'loc-parque'`;
-  await db`UPDATE locations SET name = 'Habana' WHERE id = 'loc-ribera'`;
+  await db`UPDATE locations SET
+    name = 'Lomas Padel',
+    address = 'Av. Dr. Felipe Molas López Esquina, Asunción',
+    maps_url = 'https://www.google.com/maps/search/?api=1&query=Lomas+Padel+Av.+Dr.+Felipe+Molas+López+Asunción',
+    image_url = 'https://images.unsplash.com/photo-1554068865-24cecd4e34b8?auto=format&fit=crop&w=800&h=500&q=80'
+    WHERE id = 'loc-costanera'`;
+  await db`UPDATE locations SET
+    name = 'Elite Padel Bar',
+    address = 'Av. Primer Presidente, Asunción',
+    maps_url = 'https://maps.app.goo.gl/p2oQg1pMPGXXMmi8A',
+    image_url = 'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=800&h=500&q=80'
+    WHERE id = 'loc-parque'`;
+  await db`UPDATE locations SET
+    name = 'Segurola y Habana Padel Center',
+    address = 'Capitán Elías Ayala, Asunción',
+    maps_url = 'https://www.google.com/maps/search/?api=1&query=Segurola+y+Habana+Padel+Center+Capitan+Elias+Ayala+Asunción',
+    image_url = 'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&h=500&q=80'
+    WHERE id = 'loc-ribera'`;
   await db`UPDATE coaches SET name = 'Rodrigo Avila' WHERE id = 'teacher-lucia'`;
   await db`UPDATE coaches SET name = 'Tati' WHERE id = 'teacher-marcos'`;
   await db`UPDATE coaches SET name = 'Diego' WHERE id = 'teacher-sofia'`;

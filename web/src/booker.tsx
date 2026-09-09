@@ -118,28 +118,43 @@ export function Booker() {
       <section>
         <h1 className="text-2xl font-semibold tracking-tight">Reservar</h1>
         <p className="mt-1 text-sm text-stone-600">Sede, después profe, después un horario.</p>
-        <div className="mt-5 flex flex-wrap gap-3">
-          {locations.map((l) => (
-            <div key={l.id} className={chip(locationId === l.id)}>
-              <button type="button" onClick={() => pickSede(l.id)} className="text-left">
-                <p className="font-medium">{l.name}</p>
-              </button>
-              {l.address ? (
-                l.maps_url ? (
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          {locations.map((l) => {
+            const on = locationId === l.id;
+            return (
+              <div
+                key={l.id}
+                className={cn(
+                  "overflow-hidden rounded-md border bg-white text-left transition",
+                  on ? "border-stone-900 ring-1 ring-stone-900" : "border-stone-200 hover:border-stone-400",
+                )}
+              >
+                <button type="button" onClick={() => pickSede(l.id)} className="block w-full text-left">
+                  {l.image_url ? (
+                    <img src={l.image_url} alt="" className="h-28 w-full object-cover" />
+                  ) : (
+                    <div className="h-28 w-full bg-stone-100" />
+                  )}
+                  <span className="block px-3 pt-2.5 pb-1">
+                    <span className="block text-sm font-medium text-stone-900">{l.name}</span>
+                    {l.address ? <span className="mt-0.5 block text-[11px] leading-snug text-stone-500">{l.address}</span> : null}
+                  </span>
+                </button>
+                {l.maps_url ? (
                   <a
                     href={l.maps_url}
                     target="_blank"
                     rel="noreferrer"
-                    className={cn("mt-1 block text-xs underline", locationId === l.id ? "text-stone-300" : "text-stone-500")}
+                    className="block px-3 pb-2.5 text-[11px] text-stone-400 hover:text-stone-700"
                   >
-                    {l.address}
+                    Ver en Maps
                   </a>
                 ) : (
-                  <p className={cn("mt-1 text-xs", locationId === l.id ? "text-stone-300" : "text-stone-500")}>{l.address}</p>
-                )
-              ) : null}
-            </div>
-          ))}
+                  <div className="h-2" />
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
 
