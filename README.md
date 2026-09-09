@@ -17,19 +17,18 @@ Producto: `core/` (Bun.serve, Postgres 18, `/api`) y `web/` (Vite + React, un so
 Áreas: **Jugador** (`/jugador`) y **Academia** (`/academia`). Reserva pública: `/reservar`.
 
 ```bash
-docker compose up --build
+docker compose -f compose.yaml -f compose.local.yaml up -d db
+cd core && bun --hot src/server.ts   # API :8080
+cd web && bun run dev                # SPA :5173, proxy /api → :8080
 ```
 
-En Dokploy el compose publica la app en `:8080` (`https://viborea.com`). Local: `docker compose up -d db`, `bun run dev` (API) y `bun run web` (Vite).
+Si `docker compose` no existe: `brew install docker-compose` y  
+`ln -sfn $(which docker-compose) ~/.docker/cli-plugins/docker-compose`.
 
-Solo la base, para `bun --hot` en local:
+Local el Postgres va a **5433** (`compose.local.yaml`): el 5432 suele ser un túnel SSH.  
+`DATABASE_URL=postgres://viborea:viborea@127.0.0.1:5433/viborea`.
 
-```bash
-docker compose up -d db
-DATABASE_URL=postgres://viborea:viborea@127.0.0.1:5432/viborea bun run dev
-```
-
-`bun run dev` arranca **core** (API). `bun run web` arranca la SPA de producto. `bun run dev:fork` es la SPA Tandava de referencia, no la cara de Viborea.
+En Dokploy el compose publica la app en `:8080` (`https://viborea.com`).
 ---
 
 ## Fork Tandava (referencia)

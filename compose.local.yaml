@@ -1,0 +1,18 @@
+# Local only. 5432 is often an SSH tunnel. Run the app with bun, not the app service.
+#
+#   docker compose -f compose.yaml -f compose.local.yaml up -d db
+services:
+  db:
+    ports: !override
+      - "127.0.0.1:5433:5432"
+    networks:
+      - internal
+  app:
+    profiles: ["full"]
+    networks:
+      - internal
+
+networks:
+  internal:
+    name: viborea-local
+    external: true
