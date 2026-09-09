@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { api, type Coach, type Location, type Session } from "./api";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@clerk/clerk-react";
+import { api, type Coach, type HistoryBooking, type Location, type Session, type Student } from "./api";
 import { cn } from "./ui";
 
 const DOW = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"];
@@ -45,7 +46,7 @@ function dayHeading(monday: string, offset: number) {
   return `${DOW[offset].slice(0, 3)} ${d.getUTCDate()}`;
 }
 
-export function Booker() {
+function BookerGrid({ slug }: { slug: string }) {
   const nav = useNavigate();
   const [locationId, setLocationId] = useState("");
   const [coachId, setCoachId] = useState<string | null>(null);
@@ -54,24 +55,26 @@ export function Booker() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [coaches, setCoaches] = useState<Coach[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [academyName, setAcademyName] = useState("");
 
   useEffect(() => {
     api
-      .catalog()
+      .bookerCatalog(slug)
       .then((c) => {
         setLocations(c.locations);
         setCoaches(c.coaches);
+        setAcademyName(c.name);
       })
       .catch((e: Error) => setError(e.message));
-  }, []);
+  }, [slug]);
 
   useEffect(() => {
     if (!locationId) return;
     api
-      .week(monday)
+      .bookerWeek(slug, monday)
       .then((r) => setSessions(r.sessions.filter((s) => !s.cancelled)))
       .catch((e: Error) => setError(e.message));
-  }, [monday, locationId]);
+  }, [monday, locationId, slug]);
 
   const atSede = useMemo(
     () => sessions.filter((s) => s.location_id === locationId && openSession(s)),
@@ -116,7 +119,7 @@ export function Booker() {
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
 
       <section>
-        <h1 className="text-2xl font-semibold tracking-tight">Reservar</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{academyName || "Reservar"}</h1>
         <p className="mt-1 text-sm text-stone-600">Sede, después profe, después un horario.</p>
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
           {locations.map((l) => {
@@ -214,7 +217,7 @@ export function Booker() {
                       <button
                         key={s.id}
                         type="button"
-                        onClick={() => nav(`/reservar/${s.id}`)}
+                        onClick={() => nav(`/reservar/${slug}/${s.id}`)}
                         className="rounded-md border border-stone-200 bg-white px-2 py-3 text-center text-sm hover:border-stone-900"
                       >
                         {formatTime(s.starts_at)}
@@ -230,6 +233,147 @@ export function Booker() {
           </div>
         </section>
       ) : null}
+    </div>
+  );
+}
+
+const STATUS: Record<string, string> = {
+  pending_payment: "Pendiente",
+  confirmed: "Confirmada",
+  checked_in: "Asistió",
+  cancelled: "Cancelada",
+  waitlisted: "Lista de espera",
+  no_show: "No vino",
+};
+
+function formatWhen(iso: string) {
+  const d = new Date(iso);
+  const days = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+  const h = String(d.getUTCHours()).padStart(2, "0");
+  const m = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${days[d.getUTCDay()]} ${d.getUTCDate()} ${MONTH_SHORT[d.getUTCMonth()]} · ${h}:${m}`;
+}
+
+function PlayerPanel({
+  slug,
+  getToken,
+  signedIn,
+}: {
+  slug: string;
+  getToken: () => Promise<string | null>;
+  signedIn: boolean;
+}) {
+  const [student, setStudent] = useState<Student | null>(null);
+  const [bookings, setBookings] = useState<HistoryBooking[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    void (async () => {
+      const token = (await getToken()) ?? undefined;
+      const r = await api.bookerMe(slug, token).catch(() => ({ student: null, bookings: [] as HistoryBooking[] }));
+      setStudent(r.student);
+      setBookings(r.bookings);
+      setLoaded(true);
+    })();
+  }, [slug, getToken]);
+  if (!loaded) return null;
+  const now = Date.now();
+  const upcoming = bookings.filter((b) => new Date(b.starts_at).getTime() >= now && b.status !== "cancelled");
+  const past = bookings.filter((b) => new Date(b.starts_at).getTime() < now || b.status === "cancelled");
+  return (
+    <section className="rounded-md border border-stone-200 bg-white p-5">
+      {student ? (
+        <>
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-semibold">Tus clases</h2>
+              <p className="text-sm text-stone-600">{student.name}</p>
+            </div>
+          </div>
+          {bookings.length === 0 ? (
+            <p className="mt-3 text-sm text-stone-500">Todavía no reservaste. Elegí sede y horario abajo.</p>
+          ) : (
+            <div className="mt-4 space-y-4">
+              {upcoming.length ? (
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-stone-400">Próximas</p>
+                  <ul className="mt-2 divide-y">
+                    {upcoming.map((b) => (
+                      <HistoryRow key={b.id} b={b} />
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {past.length ? (
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-stone-400">Anteriores</p>
+                  <ul className="mt-2 divide-y">
+                    {past.map((b) => (
+                      <HistoryRow key={b.id} b={b} />
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </>
+      ) : signedIn ? (
+        <p className="text-sm text-stone-600">Esta cuenta no tiene reservas de jugador en esta academia.</p>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-stone-600">Entrá para ver tus reservas con cada profe.</p>
+          <Link
+            to={`/entrar?next=/reservar/${slug}`}
+            className="inline-flex h-9 items-center rounded-lg bg-stone-900 px-3 text-sm font-medium text-white"
+          >
+            Entrar
+          </Link>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function HistoryRow({ b }: { b: HistoryBooking }) {
+  return (
+    <li className="flex flex-wrap items-baseline justify-between gap-2 py-2 text-sm">
+      <div>
+        <p className="font-medium">{formatWhen(b.starts_at)}</p>
+        <p className="text-stone-600">
+          {b.coach_name} · {b.location_name} · {b.court_name}
+        </p>
+        <p className="text-stone-400">{b.offering_name}</p>
+      </div>
+      <span className="text-xs text-stone-500">{STATUS[b.status] ?? b.status}</span>
+    </li>
+  );
+}
+
+function PlayerPanelAuthed({ slug }: { slug: string }) {
+  const { getToken, isSignedIn } = useAuth();
+  return <PlayerPanel slug={slug} getToken={getToken} signedIn={Boolean(isSignedIn)} />;
+}
+
+export function Booker({ slug, view = "reservar" }: { slug: string; view?: "reservar" | "clases" }) {
+  const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+  const tab = (to: string, label: string, on: boolean) => (
+    <Link
+      to={to}
+      className={`rounded-lg px-3 py-1.5 text-sm ${on ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"}`}
+    >
+      {label}
+    </Link>
+  );
+  return (
+    <div className="space-y-6">
+      <nav className="flex gap-1">
+        {tab(`/reservar/${slug}`, "Reservar", view === "reservar")}
+        {tab(`/reservar/${slug}/clases`, "Mis clases", view === "clases")}
+      </nav>
+      {view === "clases" ? (
+        key ? <PlayerPanelAuthed slug={slug} /> : <PlayerPanel slug={slug} getToken={async () => null} signedIn={false} />
+      ) : (
+        <BookerGrid slug={slug} />
+      )}
     </div>
   );
 }

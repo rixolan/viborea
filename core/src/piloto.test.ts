@@ -9,7 +9,7 @@ describe.skipIf(!url)("piloto reserva + pack", () => {
   it("compra pack de 10, confirma y deja 9", async () => {
     const db = await openDb(url);
     await seedIfEmpty(db);
-    const phone = `+59597${Date.now().toString().slice(-8)}`;
+    const phone = `+595981${Date.now().toString().slice(-6)}`;
     const result = await pilotoReserva(db, {
       name: "Ana Piloto",
       phone,

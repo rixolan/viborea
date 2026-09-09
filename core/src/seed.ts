@@ -1,6 +1,9 @@
 import type { DayOfWeek } from "./domain/types";
 import type { Db } from "./db";
 
+export const DG_ACADEMY_ID = "academy-alameda";
+export const WP_ACADEMY_ID = "academy-wp";
+
 const TEMPLATES: [string, DayOfWeek, string, string, string, string, string][] = [
   ["tpl-mon-15-c1", "monday", "15:00", "off-individual", "loc-costanera", "teacher-lucia", "court-costanera-1"],
   ["tpl-mon-15-c2", "monday", "15:00", "off-dual", "loc-costanera", "teacher-marcos", "court-costanera-2"],
@@ -30,37 +33,45 @@ export async function seedIfEmpty(db: Db): Promise<void> {
   if (row) return;
 
   await db.begin(async (tx) => {
-    await tx`INSERT INTO academy (id, name, locale, currency, timezone) VALUES ('academy-alameda', 'Academia Alameda', 'es-PY', 'PYG', 'America/Asuncion')`;
-    await tx`INSERT INTO locations (id, name, address, maps_url, image_url) VALUES
-      ('loc-costanera', 'Lomas Padel', 'Av. Dr. Felipe Molas López Esquina, Asunción', 'https://www.google.com/maps/search/?api=1&query=Lomas+Padel+Av.+Dr.+Felipe+Molas+López+Asunción', 'https://images.unsplash.com/photo-1554068865-24cecd4e34b8?auto=format&fit=crop&w=800&h=500&q=80'),
-      ('loc-parque', 'Elite Padel Bar', 'Av. Primer Presidente, Asunción', 'https://maps.app.goo.gl/p2oQg1pMPGXXMmi8A', 'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=800&h=500&q=80'),
-      ('loc-ribera', 'Segurola y Habana Padel Center', 'Capitán Elías Ayala, Asunción', 'https://www.google.com/maps/search/?api=1&query=Segurola+y+Habana+Padel+Center+Capitan+Elias+Ayala+Asunción', 'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&h=500&q=80')`;
+    await tx`INSERT INTO academy (id, slug, name, locale, currency, timezone) VALUES
+      (${DG_ACADEMY_ID}, 'academiadg', 'Academia DG', 'es-PY', 'PYG', 'America/Asuncion'),
+      (${WP_ACADEMY_ID}, 'wpacademia', 'WP Academia', 'es-PY', 'PYG', 'America/Asuncion')`;
+    await tx`INSERT INTO locations (id, academy_id, name, address, maps_url, image_url) VALUES
+      ('loc-costanera', ${DG_ACADEMY_ID}, 'Lomas Padel', 'Av. Dr. Felipe Molas López Esquina, Asunción', 'https://www.google.com/maps/search/?api=1&query=Lomas+Padel+Av.+Dr.+Felipe+Molas+López+Asunción', 'https://images.unsplash.com/photo-1554068865-24cecd4e34b8?auto=format&fit=crop&w=800&h=500&q=80'),
+      ('loc-parque', ${DG_ACADEMY_ID}, 'Elite Padel Bar', 'Av. Primer Presidente, Asunción', 'https://maps.app.goo.gl/p2oQg1pMPGXXMmi8A', 'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=800&h=500&q=80'),
+      ('loc-ribera', ${DG_ACADEMY_ID}, 'Segurola y Habana Padel Center', 'Capitán Elías Ayala, Asunción', 'https://www.google.com/maps/search/?api=1&query=Segurola+y+Habana+Padel+Center+Capitan+Elias+Ayala+Asunción', 'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=800&h=500&q=80'),
+      ('loc-wp-1', ${WP_ACADEMY_ID}, 'WP Sede', null, null, null)`;
 
-    const courts: [string, string, string, number][] = [];
-    for (let n = 1; n <= 6; n++) courts.push([`court-costanera-${n}`, "loc-costanera", `Cancha ${n}`, n]);
-    courts.push(["court-parque-1", "loc-parque", "Cancha 1", 1], ["court-parque-2", "loc-parque", "Cancha 2", 2]);
-    courts.push(["court-ribera-1", "loc-ribera", "Cancha 1", 1], ["court-ribera-2", "loc-ribera", "Cancha 2", 2]);
-    for (const [id, locationId, name, number] of courts) {
-      await tx`INSERT INTO courts (id, location_id, name, number) VALUES (${id}, ${locationId}, ${name}, ${number})`;
+    const courts: [string, string, string, string, number][] = [];
+    for (let n = 1; n <= 6; n++) courts.push([`court-costanera-${n}`, DG_ACADEMY_ID, "loc-costanera", `Cancha ${n}`, n]);
+    courts.push(["court-parque-1", DG_ACADEMY_ID, "loc-parque", "Cancha 1", 1], ["court-parque-2", DG_ACADEMY_ID, "loc-parque", "Cancha 2", 2]);
+    courts.push(["court-ribera-1", DG_ACADEMY_ID, "loc-ribera", "Cancha 1", 1], ["court-ribera-2", DG_ACADEMY_ID, "loc-ribera", "Cancha 2", 2]);
+    courts.push(["court-wp-1", WP_ACADEMY_ID, "loc-wp-1", "Cancha 1", 1]);
+    for (const [id, academyId, locationId, name, number] of courts) {
+      await tx`INSERT INTO courts (id, academy_id, location_id, name, number) VALUES (${id}, ${academyId}, ${locationId}, ${name}, ${number})`;
     }
 
-    await tx`INSERT INTO coaches (id, name) VALUES
-      ('teacher-lucia', 'Rodrigo Avila'),
-      ('teacher-marcos', 'Tati'),
-      ('teacher-sofia', 'Diego'),
-      ('teacher-pablo', 'Pablo')`;
+    await tx`INSERT INTO coaches (id, academy_id, name) VALUES
+      ('teacher-lucia', ${DG_ACADEMY_ID}, 'Rodrigo Avila'),
+      ('teacher-marcos', ${DG_ACADEMY_ID}, 'Tati'),
+      ('teacher-sofia', ${DG_ACADEMY_ID}, 'Diego'),
+      ('teacher-pablo', ${DG_ACADEMY_ID}, 'Pablo'),
+      ('coach-wp-1', ${WP_ACADEMY_ID}, 'Profe WP')`;
 
-    await tx`INSERT INTO offerings (id, name, duration_minutes, capacity, price) VALUES
-      ('off-individual', 'Individual', 60, 1, 150000),
-      ('off-dual', 'Dual', 60, 2, 125000),
-      ('off-grupal', 'Grupal', 60, 4, 100000)`;
+    await tx`INSERT INTO offerings (id, academy_id, name, duration_minutes, capacity, price) VALUES
+      ('off-individual', ${DG_ACADEMY_ID}, 'Individual', 60, 1, 150000),
+      ('off-dual', ${DG_ACADEMY_ID}, 'Dual', 60, 2, 125000),
+      ('off-grupal', ${DG_ACADEMY_ID}, 'Grupal', 60, 4, 100000),
+      ('off-wp-grupal', ${WP_ACADEMY_ID}, 'Grupal', 60, 4, 100000)`;
 
     for (const [id, day, time, offering, loc, coach, court] of TEMPLATES) {
       const [h, m] = time.split(":").map(Number);
       const end = `${String(h + 1).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-      await tx`INSERT INTO templates (id, offering_id, location_id, court_id, coach_id, weekday, start_time, end_time)
-        VALUES (${id}, ${offering}, ${loc}, ${court}, ${coach}, ${day}, ${time}, ${end})`;
+      await tx`INSERT INTO templates (id, academy_id, offering_id, location_id, court_id, coach_id, weekday, start_time, end_time)
+        VALUES (${id}, ${DG_ACADEMY_ID}, ${offering}, ${loc}, ${court}, ${coach}, ${day}, ${time}, ${end})`;
     }
+    await tx`INSERT INTO templates (id, academy_id, offering_id, location_id, court_id, coach_id, weekday, start_time, end_time)
+      VALUES ('tpl-wp-mon-18', ${WP_ACADEMY_ID}, 'off-wp-grupal', 'loc-wp-1', 'court-wp-1', 'coach-wp-1', 'monday', '18:00', '19:00')`;
 
     const names = [
       "María González",
@@ -74,11 +85,13 @@ export async function seedIfEmpty(db: Db): Promise<void> {
     ];
     for (let i = 0; i < names.length; i++) {
       const phone = `+59598000000${i + 1}`;
-      await tx`INSERT INTO students (id, name, phone, category, side)
-        VALUES (${`student-${i + 1}`}, ${names[i]}, ${phone}, 'beginner', null)`;
+      await tx`INSERT INTO students (id, academy_id, name, phone, category, side)
+        VALUES (${`student-${i + 1}`}, ${DG_ACADEMY_ID}, ${names[i]}, ${phone}, 'beginner', null)`;
     }
   });
 }
+
+
 
 export async function alignCatalog(db: Db): Promise<void> {
   await db`UPDATE locations SET
@@ -102,5 +115,5 @@ export async function alignCatalog(db: Db): Promise<void> {
   await db`UPDATE coaches SET name = 'Rodrigo Avila' WHERE id = 'teacher-lucia'`;
   await db`UPDATE coaches SET name = 'Tati' WHERE id = 'teacher-marcos'`;
   await db`UPDATE coaches SET name = 'Diego' WHERE id = 'teacher-sofia'`;
-  await db`INSERT INTO coaches (id, name) VALUES ('teacher-pablo', 'Pablo') ON CONFLICT (id) DO UPDATE SET name = 'Pablo'`;
+  await db`INSERT INTO coaches (id, academy_id, name) VALUES ('teacher-pablo', ${DG_ACADEMY_ID}, 'Pablo') ON CONFLICT (id) DO UPDATE SET name = 'Pablo'`;
 }

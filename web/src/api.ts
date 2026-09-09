@@ -39,6 +39,17 @@ export type Booking = {
   category: string;
   side: string | null;
 };
+export type HistoryBooking = {
+  id: string;
+  session_id: string;
+  status: string;
+  starts_at: string;
+  ends_at: string;
+  offering_name: string;
+  coach_name: string;
+  location_name: string;
+  court_name: string;
+};
 export type Template = {
   id: string;
   offering_id: string;
@@ -58,6 +69,7 @@ export type SessionDetail = { session: Session; bookings: Booking[] };
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
+    credentials: "include",
     ...init,
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
   });
@@ -66,20 +78,39 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
-export type AcademySettings = { name: string; cutoff_hours: number; timezone: string; locale: string };
+export type AcademySettings = {
+  name: string;
+  slug: string;
+  cutoff_hours: number;
+  timezone: string;
+  locale: string;
+  booker_path: string;
+};
 
 function auth(token?: string): HeadersInit {
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 
 export const api = {
-  catalog: () =>
+  bookerHome: () => req<{ slug: string | null }>("/api/booker"),
+  bookerCatalog: (slug: string) =>
+    req<{ name: string; slug: string; locations: Location[]; coaches: Coach[]; courts: Court[]; offerings: Offering[] }>(
+      `/api/a/${slug}/catalog`,
+    ),
+  bookerWeek: (slug: string, monday: string) =>
+    req<{ sessions: Session[]; name: string }>(`/api/a/${slug}/week?monday=${monday}`),
+  bookerSession: (slug: string, id: string) => req<{ session: Session }>(`/api/a/${slug}/sessions/${id}`),
+  bookerMe: (slug: string, token?: string) =>
+    req<{ student: Student | null; bookings: HistoryBooking[] }>(`/api/a/${slug}/me`, { headers: auth(token) }),
+  catalog: (token?: string) =>
     req<{ locations: Location[]; coaches: Coach[]; students: Student[]; courts: Court[]; offerings: Offering[] }>(
       "/api/catalog",
+      { headers: auth(token) },
     ),
-  week: (monday: string) => req<{ sessions: Session[] }>(`/api/week?monday=${monday}`),
-  session: (id: string) => req<SessionDetail>(`/api/sessions/${id}`),
-  settings: () => req<AcademySettings>("/api/settings"),
+  week: (monday: string, token?: string) =>
+    req<{ sessions: Session[] }>(`/api/week?monday=${monday}`, { headers: auth(token) }),
+  session: (id: string, token?: string) => req<SessionDetail>(`/api/sessions/${id}`, { headers: auth(token) }),
+  settings: (token?: string) => req<AcademySettings>("/api/settings", { headers: auth(token) }),
   saveSettings: (cutoffHours: number, token?: string) =>
     req<{ cutoff_hours: number; message: string }>("/api/settings", {
       method: "PATCH",
@@ -93,10 +124,11 @@ export const api = {
   ) => req<{ id: string }>("/api/templates", { method: "POST", body: JSON.stringify(input), headers: auth(token) }),
   deleteTemplate: (id: string, token?: string) =>
     req<{ ok: boolean }>(`/api/templates/${id}`, { method: "DELETE", headers: auth(token) }),
-  book: (input: { sessionId: string; name: string; phone: string; category?: string; side?: string }) =>
-    req<{ status: string; message?: string; whatsapp?: string; whatsapp_ok?: boolean }>("/api/book", {
+  book: (slug: string, input: { sessionId: string; name: string; phone: string }, token?: string) =>
+    req<{ status: string; message?: string; whatsapp?: string; whatsapp_ok?: boolean }>(`/api/a/${slug}/book`, {
       method: "POST",
       body: JSON.stringify(input),
+      headers: auth(token),
     }),
   setStatus: (bookingId: string, status: string, token?: string) =>
     req<{ message: string }>(`/api/bookings/${bookingId}/status`, {

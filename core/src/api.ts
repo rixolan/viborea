@@ -1,28 +1,50 @@
 import type { Db } from "./db";
 import {
-  academy,
+  academyBySlug,
+  bookerRedirectSlug,
   catalogs,
+  ClaimedFichaError,
   createTemplate,
   deleteTemplate,
   ensureWeek,
   getSession,
+  identifyPlayer,
   listTemplates,
   mondayOf,
   publicBook,
   selfServeCancel,
   sessionBookings,
   setBookingStatus,
+  studentHistory,
   updateCutoffHours,
   weekSessions,
+  type Academy,
 } from "./db";
 import { parseCategory, parseSide } from "./domain/student";
 import { CutoffError } from "./domain/cutoff";
 import type { BookingStatus, DayOfWeek } from "./domain/types";
-import { requireAcademy } from "./auth";
+import { readClerk, requireAcademy } from "./auth";
 import { configFromEnv as whatsappConfig, notifyReservation } from "./notify/whatsapp";
+import { clearPlayerCookieHeader, cookieName, decodePlayerCookie, readCookie, setPlayerCookieHeader } from "./player-cookie";
 
-function json(data: unknown, status = 200) {
-  return Response.json(data, { status });
+function json(data: unknown, status = 200, headers?: HeadersInit) {
+  return Response.json(data, { status, headers });
+}
+
+function staff(gate: { academy: Academy } | Response): gate is { academy: Academy } {
+  return !(gate instanceof Response);
+}
+
+const bookerRe = /^\/api\/a\/([^/]+)(?:\/(.*))?$/;
+
+async function playerOf(req: Request, db: Db, academy: Academy) {
+  const clerk = await readClerk(req);
+  const raw = readCookie(req.headers.get("cookie"), cookieName(academy.slug));
+  const cookieStudentId = decodePlayerCookie(academy.id, raw);
+  return identifyPlayer(db, academy.id, {
+    clerkUserId: clerk?.userId ?? null,
+    cookieStudentId: clerk?.userId ? null : cookieStudentId,
+  });
 }
 
 export async function handleApi(req: Request, db: Db): Promise<Response | null> {
@@ -30,21 +52,135 @@ export async function handleApi(req: Request, db: Db): Promise<Response | null> 
   if (!url.pathname.startsWith("/api/")) return null;
 
   if (req.method === "GET" && url.pathname === "/api/health") {
-    const ac = await academy(db);
-    return json({ ok: true, academy: ac.name });
+    return json({ ok: true });
   }
 
+  if (req.method === "GET" && url.pathname === "/api/booker") {
+    return json({ slug: await bookerRedirectSlug(db) });
+  }
+
+  const booker = url.pathname.match(bookerRe);
+  if (booker) {
+    const slug = decodeURIComponent(booker[1]);
+    const rest = booker[2] ?? "";
+    const ac = await academyBySlug(db, slug);
+    if (!ac) return json({ error: "Academia inexistente" }, 404);
+    return handleBooker(req, db, url, ac, rest);
+  }
+
+  const denied = await requireAcademy(req, db);
+  if (!staff(denied)) return denied;
+  const academy = denied.academy;
+  return handleStaff(req, db, url, academy);
+}
+
+async function handleBooker(req: Request, db: Db, url: URL, ac: Academy, rest: string): Promise<Response> {
+  if (req.method === "GET" && rest === "catalog") {
+    const cat = await catalogs(db, ac.id);
+    return json({
+      name: ac.name,
+      slug: ac.slug,
+      locations: cat.locations,
+      coaches: cat.coaches,
+      courts: cat.courts,
+      offerings: cat.offerings,
+    });
+  }
+
+  if (req.method === "GET" && rest === "week") {
+    const raw = url.searchParams.get("monday");
+    const monday = mondayOf(raw ? new Date(`${raw}T00:00:00.000Z`) : new Date());
+    await ensureWeek(db, ac.id, monday);
+    const sessions = await weekSessions(db, ac.id, monday);
+    return json({ monday: monday.toISOString().slice(0, 10), sessions, name: ac.name, slug: ac.slug });
+  }
+
+  const sessionMatch = rest.match(/^sessions\/([^/]+)$/);
+  if (req.method === "GET" && sessionMatch) {
+    const session = await getSession(db, ac.id, decodeURIComponent(sessionMatch[1]));
+    if (!session) return json({ error: "Sesión inexistente" }, 404);
+    return json({ session });
+  }
+
+  if (req.method === "GET" && rest === "me") {
+    const clerk = await readClerk(req);
+    const student = await playerOf(req, db, ac);
+    if (!student) {
+      const headers = clerk?.userId ? { "Set-Cookie": clearPlayerCookieHeader(ac.slug) } : undefined;
+      return json({ student: null, bookings: [] }, 200, headers);
+    }
+    return json({ student, bookings: await studentHistory(db, ac.id, student.id) });
+  }
+
+  if (req.method === "POST" && rest === "book") {
+    const body = (await req.json()) as {
+      sessionId?: string;
+      name?: string;
+      phone?: string;
+      category?: string;
+      side?: string;
+    };
+    try {
+      const clerk = await readClerk(req);
+      const raw = readCookie(req.headers.get("cookie"), cookieName(ac.slug));
+      const cookieStudentId = decodePlayerCookie(ac.id, raw);
+      const sessionId = body.sessionId ?? "";
+      const { status, student } = await publicBook(db, ac.id, sessionId, body.name ?? "", body.phone ?? "", {
+        category: parseCategory(body.category),
+        side: parseSide(body.side),
+        clerkUserId: clerk?.userId ?? null,
+        cookieStudentId: clerk?.userId ? null : cookieStudentId,
+      });
+      const session = await getSession(db, ac.id, sessionId);
+      const when = session ? new Date(session.starts_at).toISOString().slice(11, 16) : "";
+      const text = session
+        ? `Viborea: ${session.offering_name} ${when} · ${session.location_name} · ${session.court_name} · ${session.coach_name}. Reserva ${status}.`
+        : `Viborea: reserva ${status}.`;
+      const sent = await notifyReservation(whatsappConfig(), student.phone, text);
+      const base = status === "waitlisted" ? "Lista de espera." : "Reserva anotada. Pendiente de pago.";
+      const wa = sent.ok && sent.channel !== "dry-run" ? " Te escribimos por WhatsApp." : "";
+      return json(
+        { status, message: base + wa, whatsapp: sent.channel, whatsapp_ok: sent.ok },
+        200,
+        { "Set-Cookie": setPlayerCookieHeader(ac.slug, ac.id, student.id) },
+      );
+    } catch (err) {
+      const code = err instanceof ClaimedFichaError ? 409 : 400;
+      return json({ error: err instanceof Error ? err.message : "Error" }, code);
+    }
+  }
+
+  const cancelMatch = rest.match(/^bookings\/([^/]+)\/cancel$/);
+  if (req.method === "POST" && cancelMatch) {
+    const student = await playerOf(req, db, ac);
+    if (!student) return json({ error: "Entrá para cancelar." }, 401);
+    try {
+      await selfServeCancel(db, ac.id, decodeURIComponent(cancelMatch[1]), student.id);
+      return json({ message: "Reserva cancelada." });
+    } catch (err) {
+      return json({ error: err instanceof Error ? err.message : "Error" }, 400);
+    }
+  }
+
+  return json({ error: "No encontrada" }, 404);
+}
+
+async function handleStaff(req: Request, db: Db, url: URL, academy: Academy): Promise<Response> {
   if (req.method === "GET" && url.pathname === "/api/settings") {
-    const ac = await academy(db);
-    return json({ name: ac.name, cutoff_hours: ac.cutoff_hours, timezone: ac.timezone, locale: ac.locale });
+    return json({
+      name: academy.name,
+      slug: academy.slug,
+      cutoff_hours: academy.cutoff_hours,
+      timezone: academy.timezone,
+      locale: academy.locale,
+      booker_path: `/reservar/${academy.slug}`,
+    });
   }
 
   if (req.method === "PATCH" && url.pathname === "/api/settings") {
-    const denied = await requireAcademy(req);
-    if (denied) return denied;
     const body = (await req.json()) as { cutoff_hours?: number | string };
     try {
-      const hours = await updateCutoffHours(db, body.cutoff_hours ?? "");
+      const hours = await updateCutoffHours(db, academy.id, body.cutoff_hours ?? "");
       return json({ cutoff_hours: hours, message: `Plazo: ${hours} h antes de la clase.` });
     } catch (err) {
       const msg = err instanceof CutoffError || err instanceof Error ? err.message : "Error";
@@ -53,7 +189,7 @@ export async function handleApi(req: Request, db: Db): Promise<Response | null> 
   }
 
   if (req.method === "GET" && url.pathname === "/api/catalog") {
-    const cat = await catalogs(db);
+    const cat = await catalogs(db, academy.id);
     return json({
       locations: cat.locations,
       coaches: cat.coaches,
@@ -64,14 +200,10 @@ export async function handleApi(req: Request, db: Db): Promise<Response | null> 
   }
 
   if (req.method === "GET" && url.pathname === "/api/templates") {
-    const denied = await requireAcademy(req);
-    if (denied) return denied;
-    return json({ templates: await listTemplates(db) });
+    return json({ templates: await listTemplates(db, academy.id) });
   }
 
   if (req.method === "POST" && url.pathname === "/api/templates") {
-    const denied = await requireAcademy(req);
-    if (denied) return denied;
     const body = (await req.json()) as {
       offeringId?: string;
       locationId?: string;
@@ -81,7 +213,7 @@ export async function handleApi(req: Request, db: Db): Promise<Response | null> 
       startTime?: string;
     };
     try {
-      const id = await createTemplate(db, {
+      const id = await createTemplate(db, academy.id, {
         offeringId: body.offeringId ?? "",
         locationId: body.locationId ?? "",
         courtId: body.courtId ?? "",
@@ -97,73 +229,31 @@ export async function handleApi(req: Request, db: Db): Promise<Response | null> 
 
   const delTpl = url.pathname.match(/^\/api\/templates\/([^/]+)$/);
   if (req.method === "DELETE" && delTpl) {
-    const denied = await requireAcademy(req);
-    if (denied) return denied;
-    await deleteTemplate(db, decodeURIComponent(delTpl[1]));
+    await deleteTemplate(db, academy.id, decodeURIComponent(delTpl[1]));
     return json({ ok: true });
   }
 
   if (req.method === "GET" && url.pathname === "/api/week") {
     const raw = url.searchParams.get("monday");
     const monday = mondayOf(raw ? new Date(`${raw}T00:00:00.000Z`) : new Date());
-    await ensureWeek(db, monday);
-    const sessions = await weekSessions(db, monday);
+    await ensureWeek(db, academy.id, monday);
+    const sessions = await weekSessions(db, academy.id, monday);
     return json({ monday: monday.toISOString().slice(0, 10), sessions });
   }
 
   const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)$/);
   if (req.method === "GET" && sessionMatch) {
-    const session = await getSession(db, decodeURIComponent(sessionMatch[1]));
+    const session = await getSession(db, academy.id, decodeURIComponent(sessionMatch[1]));
     if (!session) return json({ error: "Sesión inexistente" }, 404);
-    const bookings = await sessionBookings(db, session.id);
+    const bookings = await sessionBookings(db, academy.id, session.id);
     return json({ session, bookings });
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/book") {
-    const body = (await req.json()) as {
-      sessionId?: string;
-      name?: string;
-      phone?: string;
-      category?: string;
-      side?: string;
-    };
-    try {
-      const sessionId = body.sessionId ?? "";
-      const status = await publicBook(db, sessionId, body.name ?? "", body.phone ?? "", {
-        category: parseCategory(body.category),
-        side: parseSide(body.side),
-      });
-      const session = await getSession(db, sessionId);
-      const when = session ? new Date(session.starts_at).toISOString().slice(11, 16) : "";
-      const text = session
-        ? `Viborea: ${session.offering_name} ${when} · ${session.location_name} · ${session.court_name} · ${session.coach_name}. Reserva ${status}.`
-        : `Viborea: reserva ${status}.`;
-      const sent = await notifyReservation(whatsappConfig(), body.phone ?? "", text);
-      const base = status === "waitlisted" ? "Lista de espera." : "Reserva anotada. Pendiente de pago.";
-      const wa = sent.ok && sent.channel !== "dry-run" ? " Te escribimos por WhatsApp." : "";
-      return json({ status, message: base + wa, whatsapp: sent.channel, whatsapp_ok: sent.ok });
-    } catch (err) {
-      return json({ error: err instanceof Error ? err.message : "Error" }, 400);
-    }
-  }
-
-  const cancelMatch = url.pathname.match(/^\/api\/bookings\/([^/]+)\/cancel$/);
-  if (req.method === "POST" && cancelMatch) {
-    try {
-      await selfServeCancel(db, decodeURIComponent(cancelMatch[1]));
-      return json({ message: "Reserva cancelada." });
-    } catch (err) {
-      return json({ error: err instanceof Error ? err.message : "Error" }, 400);
-    }
   }
 
   const payMatch = url.pathname.match(/^\/api\/bookings\/([^/]+)\/status$/);
   if (req.method === "POST" && payMatch) {
-    const denied = await requireAcademy(req);
-    if (denied) return denied;
     const body = (await req.json()) as { status?: BookingStatus };
     try {
-      const alert = await setBookingStatus(db, decodeURIComponent(payMatch[1]), body.status ?? "confirmed");
+      const alert = await setBookingStatus(db, academy.id, decodeURIComponent(payMatch[1]), body.status ?? "confirmed");
       return json({ message: alert?.message ?? "Actualizado." });
     } catch (err) {
       return json({ error: err instanceof Error ? err.message : "Error" }, 400);

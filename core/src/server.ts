@@ -1,6 +1,7 @@
 import {
   OverlapError,
-  academy,
+  academyById,
+  academyBySlug,
   addDays,
   bookStudent,
   cancelSession,
@@ -28,7 +29,7 @@ import {
   ajustesPage,
 } from "./html";
 import { PLACEHOLDER_PROFES, PLACEHOLDER_SEDES, findProfe, findSede } from "./placeholders";
-import { seedIfEmpty, alignCatalog } from "./seed";
+import { seedIfEmpty, alignCatalog, DG_ACADEMY_ID } from "./seed";
 import { CutoffError } from "./domain/cutoff";
 import type { BookingStatus } from "./domain/types";
 import { parseCategory, parseSide } from "./domain/student";
@@ -112,18 +113,21 @@ Bun.serve({
       return handleTpagoHook(req);
     }
     const { monday, day } = parseWeek(url);
-    await ensureWeek(db, monday);
     const apiRes = await handleApi(req, db);
     if (apiRes) return apiRes;
-    if (existsSync(DIST) && req.method === "GET" && !url.pathname.startsWith("/piloto")) {
-      const rel = url.pathname === "/" ? "index.html" : url.pathname.replace(/^\//, "");
-      const asset = Bun.file(join(DIST, rel));
-      if (rel.includes(".") && (await asset.exists())) return new Response(asset);
+    if (existsSync(DIST) && req.method === "GET" && url.pathname !== "/piloto") {
+      const rel = url.pathname.replace(/^\//, "");
+      if (rel.includes(".")) {
+        const asset = Bun.file(join(DIST, rel));
+        if (await asset.exists()) return new Response(asset);
+      }
       return new Response(Bun.file(join(DIST, "index.html")), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
-    const ac = await academy(db);
+    const ac = (await academyBySlug(db, "academiadg")) ?? (await academyById(db, DG_ACADEMY_ID));
+    const aid = ac.id;
+    await ensureWeek(db, aid, monday);
     const flash = flashOf(url);
     if (req.method === "GET" && url.pathname === "/piloto") {
       return html(pilotoPage(ac, flash));
@@ -188,13 +192,13 @@ Bun.serve({
       }
     }
     if (req.method === "GET" && url.pathname === "/alumnos") {
-      const cat = await catalogs(db);
+      const cat = await catalogs(db, aid);
       return html(alumnosPage(ac, cat.students, flash));
     }
     if (req.method === "POST" && url.pathname === "/alumnos") {
       const form = await readForm(req);
       try {
-        await updateStudent(db, form.get("id") ?? "", {
+        await updateStudent(db, aid, form.get("id") ?? "", {
           name: form.get("name") ?? undefined,
           category: parseCategory(form.get("category")),
           side: parseSide(form.get("side")),
@@ -211,7 +215,7 @@ Bun.serve({
     if (req.method === "POST" && url.pathname === "/ajustes") {
       const form = await readForm(req);
       try {
-        const hours = await updateCutoffHours(db, form.get("cutoff_hours") ?? "");
+        const hours = await updateCutoffHours(db, aid, form.get("cutoff_hours") ?? "");
         return redirect("/ajustes", { ok: `Plazo: ${hours} h antes de la clase.` });
       } catch (err) {
         const msg = err instanceof CutoffError || err instanceof Error ? err.message : "Error";
@@ -219,13 +223,13 @@ Bun.serve({
       }
     }
     if (req.method === "GET" && url.pathname === "/") {
-      const cat = await catalogs(db);
+      const cat = await catalogs(db, aid);
       return html(
         gridPage({
           academy: ac,
           monday,
           dayOffset: day,
-          sessions: await weekSessions(db, monday),
+          sessions: await weekSessions(db, aid, monday),
           ...cat,
           flash,
         }),
@@ -279,14 +283,14 @@ Bun.serve({
 
     const sessionMatch = url.pathname.match(/^\/sesiones\/([^/]+)$/);
     if (req.method === "GET" && sessionMatch) {
-      const row = await getSession(db, decodeURIComponent(sessionMatch[1]));
+      const row = await getSession(db, aid, decodeURIComponent(sessionMatch[1]));
       if (!row) return new Response("No encontrada", { status: 404 });
-      const cat = await catalogs(db);
+      const cat = await catalogs(db, aid);
       return html(
         sessionPage({
           academy: ac,
           session: row,
-          bookings: await sessionBookings(db, row.id),
+          bookings: await sessionBookings(db, aid, row.id),
           students: cat.students,
           week: url.searchParams.get("week") ?? monday.toISOString().slice(0, 10),
           day,
@@ -306,7 +310,7 @@ Bun.serve({
         const startsAt = addDays(mondayOf(new Date(`${week}T00:00:00.000Z`)), dayOffset);
         startsAt.setUTCHours(h, m, 0, 0);
         const weekStart = mondayOf(startsAt);
-        await createSession(db, {
+        await createSession(db, aid, {
           offeringId: form.get("offering_id") ?? "",
           courtId: form.get("court_id") ?? "",
           coachId: form.get("coach_id") ?? "",
@@ -330,7 +334,7 @@ Bun.serve({
     const cancelMatch = url.pathname.match(/^\/sesiones\/([^/]+)\/cancelar$/);
     if (req.method === "POST" && cancelMatch) {
       const form = await readForm(req);
-      await cancelSession(db, decodeURIComponent(cancelMatch[1]));
+      await cancelSession(db, aid, decodeURIComponent(cancelMatch[1]));
       return redirect(weekQuery(form), { ok: "Clase cancelada. La planilla madre no cambia." });
     }
 
@@ -342,7 +346,7 @@ Bun.serve({
       const d = form.get("day") ?? "0";
       const here = `/sesiones/${id}?week=${encodeURIComponent(week)}&day=${encodeURIComponent(d)}`;
       try {
-        const status = await bookStudent(db, id, form.get("student_id") ?? "");
+        const status = await bookStudent(db, aid, id, form.get("student_id") ?? "");
         const ok =
           status === "waitlisted" ? "Lista de espera." : "Reserva pendiente de pago.";
         return redirect(here, { ok });
@@ -357,7 +361,7 @@ Bun.serve({
       const form = await readForm(req);
       const bookingId = decodeURIComponent(payMatch[1]);
       const status = (form.get("status") ?? "confirmed") as BookingStatus;
-      const alert = await setBookingStatus(db, bookingId, status);
+      const alert = await setBookingStatus(db, aid, bookingId, status);
       const week = form.get("week") ?? "";
       const d = form.get("day") ?? "0";
       const [booking] = await db`SELECT session_id FROM bookings WHERE id = ${bookingId}`;

@@ -57,8 +57,8 @@ Metadata de origen del booking (`web`, `whatsapp`, `admin`). No forka la grilla.
 _Avoid_: inbox, conversation
 
 **Student**:
-Alumno de la academia. Persona que reserva; no es un usuario de software.
-_Avoid_: client, user, member
+Ficha de **una** academia. Teléfono único dentro de esa academia. No es la persona ni un usuario de software.
+_Avoid_: client, user, member, Person
 
 **Category**:
 Nivel de juego del alumno: principiante, 1–8 o profesional. No es un ranking externo ni un pack.

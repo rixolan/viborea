@@ -1,6 +1,19 @@
 import { Navigate, createBrowserRouter, RouterProvider, useParams } from "react-router-dom";
 import { Shell } from "./shell";
-import { Academia, AcademiaAjustes, AcademiaNueva, AcademiaProfes, AcademiaSesion, Entrar, Jugador, Landing, Registro, Reservar, ReservarSesion } from "./pages";
+import {
+  Academia,
+  AcademiaAjustes,
+  AcademiaNueva,
+  AcademiaProfes,
+  AcademiaSesion,
+  Entrar,
+  Landing,
+  Registro,
+  Reservar,
+  ReservarClases,
+  ReservarIndex,
+  ReservarSesion,
+} from "./pages";
 
 function RedirectAcademiaSesion() {
   const { id } = useParams();
@@ -14,16 +27,18 @@ const router = createBrowserRouter([
       { path: "/", element: <Landing /> },
       { path: "/entrar", element: <Entrar /> },
       { path: "/registro", element: <Registro /> },
-      { path: "/reservar", element: <Reservar /> },
-      { path: "/reservar/:id", element: <ReservarSesion /> },
-      { path: "/jugador", element: <Jugador /> },
+      { path: "/reservar", element: <ReservarIndex /> },
+      { path: "/reservar/:slug", element: <Reservar /> },
+      { path: "/reservar/:slug/clases", element: <ReservarClases /> },
+      { path: "/reservar/:slug/:sessionId", element: <ReservarSesion /> },
+      { path: "/jugador", element: <Navigate to="/" replace /> },
       { path: "/academia", element: <Academia /> },
       { path: "/academia/nueva", element: <AcademiaNueva /> },
       { path: "/academia/profes", element: <AcademiaProfes /> },
       { path: "/academia/ajustes", element: <AcademiaAjustes /> },
       { path: "/academia/sesion/:id", element: <AcademiaSesion /> },
       { path: "/ajustes", element: <Navigate to="/academia/ajustes" replace /> },
-      { path: "/cliente", element: <Navigate to="/jugador" replace /> },
+      { path: "/cliente", element: <Navigate to="/" replace /> },
       { path: "/admin", element: <Navigate to="/academia" replace /> },
       { path: "/admin/sesion/:id", element: <RedirectAcademiaSesion /> },
       { path: "/profe", element: <Navigate to="/academia" replace /> },

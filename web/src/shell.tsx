@@ -1,11 +1,7 @@
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
-
-const areas = [
-  { to: "/reservar", label: "Reservar" },
-  { to: "/jugador", label: "Jugador" },
-  { to: "/academia", label: "Academia" },
-] as const;
+import { SignedIn, SignedOut, UserButton, useAuth, useOrganization, useUser } from "@clerk/clerk-react";
+import { api } from "./api";
 
 function AuthSlot() {
   if (!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) {
@@ -29,10 +25,46 @@ function AuthSlot() {
   );
 }
 
+function StaffLinks() {
+  const { getToken } = useAuth();
+  const { organization } = useOrganization();
+  const { user } = useUser();
+  const [booker, setBooker] = useState("");
+  const staff = Boolean(organization) || user?.publicMetadata?.role === "academia";
+  useEffect(() => {
+    if (!staff) return;
+    void (async () => {
+      try {
+        const token = (await getToken()) ?? undefined;
+        const s = await api.settings(token);
+        setBooker(s.booker_path);
+      } catch {
+        setBooker("");
+      }
+    })();
+  }, [staff, getToken]);
+  if (!staff) return null;
+  const item = ({ isActive }: { isActive: boolean }) =>
+    `rounded-lg px-3 py-1.5 ${isActive ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"}`;
+  return (
+    <>
+      <NavLink to="/academia" className={item}>
+        Academia
+      </NavLink>
+      {booker ? (
+        <NavLink to={booker} className={item}>
+          Reservar
+        </NavLink>
+      ) : null}
+    </>
+  );
+}
+
 export function Shell() {
   const loc = useLocation();
   const publicHome = loc.pathname === "/";
-  const booker = loc.pathname === "/reservar";
+  const booker = loc.pathname.startsWith("/reservar");
+  const hasClerk = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
   return (
     <div className="min-h-dvh bg-stone-50 text-stone-900">
       <header className="border-b border-stone-200 bg-white/80 backdrop-blur">
@@ -41,17 +73,11 @@ export function Shell() {
             Viborea
           </Link>
           <nav className="flex items-center gap-1 text-sm">
-            {areas.map((a) => (
-              <NavLink
-                key={a.to}
-                to={a.to}
-                className={({ isActive }) =>
-                  `rounded-lg px-3 py-1.5 ${isActive ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"}`
-                }
-              >
-                {a.label}
-              </NavLink>
-            ))}
+            {hasClerk ? (
+              <SignedIn>
+                <StaffLinks />
+              </SignedIn>
+            ) : null}
           </nav>
           <div className="flex items-center gap-2">
             <AuthSlot />

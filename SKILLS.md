@@ -13,8 +13,8 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 **Do:**
 
 1. Read [CONTEXT.md](CONTEXT.md). Identifiers stay English (`court`, `session`, `student`, `booking`).
-2. UI areas: only **Jugador** (`/jugador`) and **Academia** (`/academia`). Profe is a filter on Academia, never a third shell.
-3. Redirect leftovers: `/cliente` → `/jugador`, `/admin` → `/academia`, `/profe` → `/academia`.
+2. UI areas: **Academia** (`/academia`) and the public booker (`/reservar/:slug`). Profe is a filter on Academia, never a third shell.
+3. Redirect leftovers: `/cliente` → `/`, `/jugador` → `/`, `/admin` → `/academia`, `/profe` → `/academia`.
 4. Person who books = `students` in SQL, “jugador” in copy. Never “cliente”.
 5. `court` in schema; pista (es-ES) / cancha (es-AR, es-PY) only in i18n.
 6. Product name **Viborea**. “Bandeja” only as the padel-shot metaphor in domain prose.
@@ -53,9 +53,9 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 
 1. Add or change the handler in `core/src/api.ts` (`handleApi`). Return JSON errors with `{ error }`.
 2. Mirror the type in `web/src/api.ts`. Do not use `ReturnType<typeof …>` for public contracts; name the type.
-3. `GET /api/week?monday=YYYY-MM-DD` must `ensureWeek` for **that** Monday (`monday` query, not `week=`).
-4. Public book: `POST /api/book` → `publicBook`. Status `pending_payment` or waitlist.
-5. Academia payment toggle: `POST /api/bookings/:id/status`.
+3. `GET /api/week?monday=` (staff, org JWT) and `GET /api/a/:slug/week?monday=` (booker) must `ensureWeek` for **that** Monday.
+4. Public book: `POST /api/a/:slug/book` → `publicBook`. Guest until the ficha is claimed. Status `pending_payment` or waitlist.
+5. Academia payment toggle: `POST /api/bookings/:id/status` (org JWT → `academy_id`).
 6. SPA pages live in `web/src/pages.tsx`. Shell in `shell.tsx`. Routes in `App.tsx`.
 7. Dev: Vite proxies `/api` to `http://127.0.0.1:8080`. If Bun listens on 3000, point the proxy at 3000 or set `PORT=8080`.
 8. Production: Bun serves `web/dist` (path from `core/src/server.ts`: `../../web/dist`). New UI = React, not `html.ts`.
@@ -74,7 +74,7 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 
 1. Product DB is Postgres 18 via `postgres.js`. No Prisma, no Supabase for Viborea.
 2. Empty install: `core/src/db/schema.sql`. Existing: add a migration id in `core/src/db/migrate.ts` (`schema_migrations`).
-3. One academy per process (`academy` table). No `studio_id` until a real multi-academy ADR.
+3. N academias per Postgres. Tenant tables carry `academy_id`. Slug lives on `academy.slug` (ADR 0003). No `studio_id`.
 4. Boot path: `openDb` → migrate → `seedIfEmpty` → `alignCatalog` (`core/src/server.ts`).
 5. Production: user/db `viborea`, volume `viborea_pgdata`, not published to WAN. Local URL `postgres://viborea:viborea@127.0.0.1:5432/viborea`.
 6. Do not edit `supabase/migrations/` for product schema.
@@ -135,9 +135,9 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 
 1. One shell: `web/src/shell.tsx` (stone, DM Sans). Primitives in `web/src/ui.tsx`. Do not add a second design system or Nuxt UI.
 2. Clerk wraps the app only if `VITE_CLERK_PUBLISHABLE_KEY` is set. Do not call `useAuth` without `ClerkProvider` — split gated components (`ClerkGate`).
-3. Reservar lists real `/api/week` sessions (court + coach + cupos). No `placeholders.ts` occupancy in the SPA.
-4. Academia: week + optional coach filter + roster + pagado/pendiente.
-5. Jugador: player home; do not build a third “profe app”.
+3. Booker lists real `/api/a/:slug/week` sessions (court + coach + cupos). No `placeholders.ts` occupancy in the SPA.
+4. Academia: week + optional coach filter + roster + pagado/pendiente. Staff APIs send Clerk JWT.
+5. Historial del jugador vive en el booker, no en `/jugador`.
 6. Build: `cd web && bun run build`. Image copies `web/dist` to `/web/dist`.
 
 **Files:** `web/src/*`, `web/vite.config.ts`, `web/index.html`

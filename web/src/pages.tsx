@@ -1,12 +1,13 @@
-import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link, NavLink, useNavigate, useParams } from "react-router-dom";
-import { CreateOrganization, SignUp, useAuth, useSignIn } from "@clerk/clerk-react";
-import { api, type Session, type SessionDetail } from "./api";
+import { FormEvent, useEffect, useState } from "react";
+import { Link, NavLink, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { CreateOrganization, SignIn, SignUp, useAuth } from "@clerk/clerk-react";
+import { api, type Session, type SessionDetail, type Student } from "./api";
 import { RequireAcademia, RequireAuth } from "./auth";
 import { Badge, Button, Card, Input } from "./ui";
 import { Booker, coachPhoto } from "./booker";
 import { WeekGrid, hhmm } from "./week-grid";
 import { PhoneField } from "./phone-field";
+import { parsePhone, phoneIssue } from "./phone";
 
 function mondayISO(d = new Date()) {
   const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -27,31 +28,12 @@ export function Landing() {
           Grilla con sede, pista y entrenador. Packs o clase suelta. Cobro adelantado. Sin doble reserva.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
-          <Link to="/reservar" className="inline-flex h-11 items-center rounded-lg bg-stone-900 px-5 text-sm font-medium text-white">
-            Reservar una clase
-          </Link>
-          <Link to="/entrar" className="inline-flex h-11 items-center rounded-lg border border-stone-300 px-5 text-sm font-medium">
+          <Link to="/entrar" className="inline-flex h-11 items-center rounded-lg bg-stone-900 px-5 text-sm font-medium text-white">
             Entrar
           </Link>
-          <Link to="/registro" className="inline-flex h-11 items-center rounded-lg px-5 text-sm font-medium text-stone-600 underline">
+          <Link to="/registro" className="inline-flex h-11 items-center rounded-lg border border-stone-300 px-5 text-sm font-medium">
             Registrar academia
           </Link>
-        </div>
-      </section>
-      <section className="border-t border-stone-200 bg-white">
-        <div className="mx-auto grid max-w-5xl gap-6 px-4 py-16 sm:grid-cols-2">
-          {[
-            ["Jugador", "Reservas y saldo del pack.", "/jugador"],
-            ["Academia", "Grilla, profes, roster y pago.", "/academia"],
-          ].map(([title, body, to]) => (
-            <Card key={title}>
-              <p className="font-medium">{title}</p>
-              <p className="mt-2 text-sm text-stone-600">{body}</p>
-              <Link to={to} className="mt-4 inline-block text-sm font-medium text-stone-900 underline">
-                Abrir
-              </Link>
-            </Card>
-          ))}
         </div>
       </section>
     </div>
@@ -63,68 +45,22 @@ export function Entrar() {
   if (!key) {
     return <p className="text-sm text-stone-600">Falta VITE_CLERK_PUBLISHABLE_KEY.</p>;
   }
-  return <EntrarForm />;
+  return <EntrarGate />;
 }
 
-function EntrarForm() {
-  const { isLoaded, signIn, setActive } = useSignIn();
-  const nav = useNavigate();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [msg, setMsg] = useState<string | null>(null);
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!signIn || !setActive) return;
-    setMsg(null);
-    try {
-      const created = await signIn.create({ identifier: email });
-      if (created.status === "complete" && created.createdSessionId) {
-        await setActive({ session: created.createdSessionId });
-        nav("/academia");
-        return;
-      }
-      const passwordFactor = created.supportedFirstFactors?.find((f) => f.strategy === "password");
-      if (!passwordFactor) {
-        setMsg("Clerk no tiene contraseña como primer factor. Activala en el dashboard.");
-        return;
-      }
-      const res = await signIn.attemptFirstFactor({ strategy: "password", password });
-      if (res.status === "complete" && res.createdSessionId) {
-        await setActive({ session: res.createdSessionId });
-        nav("/academia");
-        return;
-      }
-      setMsg(
-        res.status === "needs_second_factor"
-          ? "Clerk pide un segundo factor. Dashboard → User & authentication → Multi-factor: off."
-          : `No se pudo entrar (${res.status}).`,
-      );
-    } catch (err) {
-      const clerkErr = err as { errors?: Array<{ message?: string }> };
-      setMsg(clerkErr.errors?.[0]?.message ?? (err instanceof Error ? err.message : "Error"));
-    }
-  }
+function EntrarGate() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const [params] = useSearchParams();
+  const next = params.get("next");
+  const after = next?.startsWith("/reservar/") ? next : "/academia";
   if (!isLoaded) return <p className="text-sm text-stone-500">Cargando…</p>;
+  if (isSignedIn) return <Navigate to={after} replace />;
   return (
-    <form className="mx-auto max-w-md space-y-3 py-8" onSubmit={onSubmit}>
-      <h1 className="text-2xl font-semibold">Entrar</h1>
-      <label className="block text-sm">
-        Email
-        <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="username" />
-      </label>
-      <label className="block text-sm">
-        Contraseña
-        <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
-      </label>
-      <Button type="submit">Entrar</Button>
-      {msg ? <p className="text-sm text-red-700">{msg}</p> : null}
-      <p className="text-sm text-stone-600">
-        ¿Academia nueva?{" "}
-        <Link to="/registro" className="underline">
-          Registrarse
-        </Link>
-      </p>
-    </form>
+    <div className="mx-auto max-w-md py-8">
+      <h1 className="mb-2 text-2xl font-semibold">Entrar</h1>
+      <p className="mb-6 text-sm text-stone-600">Academia o jugador, con la misma pantalla.</p>
+      <SignIn routing="hash" forceRedirectUrl={after} signUpUrl="/registro" />
+    </div>
   );
 }
 
@@ -147,7 +83,10 @@ export function AcademiaNueva() {
     <RequireAuth>
       <div className="mx-auto max-w-md py-8">
         <h1 className="mb-2 text-2xl font-semibold">Tu academia</h1>
-        <p className="mb-6 text-sm text-stone-600">Nombre del club o escuela. Quedás como admin.</p>
+        <p className="mb-6 text-sm text-stone-600">
+          El slug es la URL pública <span className="font-medium">/reservar/tu-slug</span>. No uses reservar, academia,
+          api. Quedás como admin.
+        </p>
         <CreateOrganization afterCreateOrganizationUrl="/academia" />
       </div>
     </RequireAuth>
@@ -175,8 +114,58 @@ function WeekNav({ monday, onMonday }: { monday: string; onMonday: (v: string) =
 }
 
 
+export function ReservarIndex() {
+  const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+  if (!key) return <ReservarIndexAnon />;
+  return <ReservarIndexAuthed />;
+}
+
+function ReservarIndexAnon() {
+  const [to, setTo] = useState<string | null>(null);
+  useEffect(() => {
+    api
+      .bookerHome()
+      .then((r) => setTo(r.slug ? `/reservar/${r.slug}` : "/"))
+      .catch(() => setTo("/"));
+  }, []);
+  if (!to) return <p className="text-sm text-stone-500">Cargando…</p>;
+  return <Navigate to={to} replace />;
+}
+
+function ReservarIndexAuthed() {
+  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const [to, setTo] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isLoaded) return;
+    void (async () => {
+      if (isSignedIn) {
+        try {
+          const token = (await getToken()) ?? undefined;
+          const s = await api.settings(token);
+          setTo(s.booker_path);
+          return;
+        } catch {
+          /* fall through */
+        }
+      }
+      const r = await api.bookerHome().catch(() => ({ slug: null as string | null }));
+      setTo(r.slug ? `/reservar/${r.slug}` : "/");
+    })();
+  }, [isLoaded, isSignedIn, getToken]);
+  if (!to) return <p className="text-sm text-stone-500">Cargando…</p>;
+  return <Navigate to={to} replace />;
+}
+
 export function Reservar() {
-  return <Booker />;
+  const { slug } = useParams();
+  if (!slug) return <ReservarIndex />;
+  return <Booker slug={slug} />;
+}
+
+export function ReservarClases() {
+  const { slug } = useParams();
+  if (!slug) return <ReservarIndex />;
+  return <Booker slug={slug} view="clases" />;
 }
 
 function formatDay(iso: string) {
@@ -187,7 +176,19 @@ function formatDay(iso: string) {
 }
 
 export function ReservarSesion() {
-  const { id } = useParams();
+  if (!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) {
+    return <ReservarSesionForm getToken={async () => null} />;
+  }
+  return <ReservarSesionAuthed />;
+}
+
+function ReservarSesionAuthed() {
+  const { getToken } = useAuth();
+  return <ReservarSesionForm getToken={getToken} />;
+}
+
+function ReservarSesionForm({ getToken }: { getToken: () => Promise<string | null> }) {
+  const { slug, sessionId } = useParams();
   const nav = useNavigate();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -196,16 +197,34 @@ export function ReservarSesion() {
   const [wa, setWa] = useState(false);
   const [waitlist, setWaitlist] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const [me, setMe] = useState<Student | null>(null);
   useEffect(() => {
-    if (!id) return;
-    api.session(id).then((r) => setSession(r.session)).catch((e) => setMsg(e.message));
-  }, [id]);
+    if (!slug || !sessionId) return;
+    api.bookerSession(slug, sessionId).then((r) => setSession(r.session)).catch((e) => setMsg(e.message));
+    void (async () => {
+      const token = (await getToken()) ?? undefined;
+      const r = await api.bookerMe(slug, token).catch(() => null);
+      if (r?.student) {
+        setMe(r.student);
+        setName(r.student.name);
+        setPhone(r.student.phone);
+      }
+    })();
+  }, [slug, sessionId, getToken]);
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!id) return;
+    if (!slug || !sessionId) return;
     setMsg(null);
+    if (!me) {
+      const issue = phoneIssue(phone);
+      if (issue) {
+        setMsg(issue);
+        return;
+      }
+    }
     try {
-      const r = await api.book({ sessionId: id, name, phone });
+      const token = (await getToken()) ?? undefined;
+      const r = await api.book(slug, { sessionId, name, phone: me?.phone ?? parsePhone(phone) }, token);
       setWaitlist(r.status === "waitlisted");
       setWa(Boolean(r.whatsapp_ok && r.whatsapp !== "dry-run"));
       setDone(true);
@@ -214,6 +233,7 @@ export function ReservarSesion() {
     }
   }
   if (!session) return <p className="text-sm text-stone-500">{msg ?? "Cargando…"}</p>;
+  const back = `/reservar/${slug}`;
   const rows = [
     ["Día", formatDay(session.starts_at)],
     ["Hora", hhmm(session.starts_at)],
@@ -227,7 +247,7 @@ export function ReservarSesion() {
   }
   return (
     <div className="mx-auto max-w-md space-y-4">
-      <button type="button" className="text-sm text-stone-500" onClick={() => nav("/reservar")}>
+      <button type="button" className="text-sm text-stone-500" onClick={() => nav(back)}>
         ← Horarios
       </button>
       {done ? (
@@ -249,7 +269,7 @@ export function ReservarSesion() {
             <p className="border-t border-stone-100 px-5 py-3 text-sm text-stone-600">Te escribimos por WhatsApp.</p>
           ) : null}
           <div className="border-t border-stone-100 px-5 py-4">
-            <Button type="button" className="w-full" onClick={() => nav("/reservar")}>
+            <Button type="button" className="w-full" onClick={() => nav(back)}>
               Otra clase
             </Button>
           </div>
@@ -267,45 +287,41 @@ export function ReservarSesion() {
             <p className="mt-1 text-stone-500">{session.offering_name}</p>
           </div>
           <form className="space-y-3" onSubmit={onSubmit}>
-            <label className="block text-sm">
-              Nombre
-              <Input value={name} onChange={(e) => setName(e.target.value)} required />
-            </label>
-            <label className="block text-sm">
-              Teléfono
-              <div className="mt-1">
-                <PhoneField value={phone} onChange={setPhone} />
-              </div>
-            </label>
-            <Button type="submit" className="w-full">
+            {me ? (
+              <p className="text-sm text-stone-600">
+                {me.name} · {me.phone}
+              </p>
+            ) : (
+              <>
+                <label className="block text-sm">
+                  Nombre
+                  <Input value={name} onChange={(e) => setName(e.target.value)} required />
+                </label>
+                <label className="block text-sm">
+                  Teléfono
+                  <div className="mt-1">
+                    <PhoneField value={phone} onChange={setPhone} />
+                  </div>
+                </label>
+              </>
+            )}
+            <Button type="submit" className="w-full" disabled={!me && Boolean(phoneIssue(phone))}>
               Reservar
             </Button>
-            {msg ? <p className="text-sm text-red-700">{msg}</p> : null}
+            {msg ? (
+              <p className="text-sm text-red-700">
+                {msg}{" "}
+                {msg.includes("cuenta") && slug ? (
+                  <Link className="underline" to={`/entrar?next=/reservar/${slug}`}>
+                    Entrar
+                  </Link>
+                ) : null}
+              </p>
+            ) : null}
           </form>
         </>
       )}
     </div>
-  );
-}
-
-export function Jugador() {
-  return (
-    <RequireAuth>
-      <div className="space-y-6">
-        <div className="flex items-end justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">Jugador</h1>
-            <p className="text-sm text-stone-600">Tus clases y el pack.</p>
-          </div>
-          <Link to="/reservar" className="text-sm font-medium underline">
-            Reservar clase
-          </Link>
-        </div>
-        <Card>
-          <p className="text-sm text-stone-600">Cuando reserves, la clase aparece acá.</p>
-        </Card>
-      </div>
-    </RequireAuth>
   );
 }
 
@@ -328,23 +344,44 @@ function AcademiaNav() {
 }
 
 export function Academia() {
+  const { getToken } = useAuth();
   const [monday, setMonday] = useState(mondayISO());
   const [sessions, setSessions] = useState<Session[]>([]);
   const [coachId, setCoachId] = useState("");
   const [coaches, setCoaches] = useState<{ id: string; name: string }[]>([]);
+  const [bookerPath, setBookerPath] = useState("");
   useEffect(() => {
-    api.catalog().then((c) => setCoaches(c.coaches));
-  }, []);
+    void (async () => {
+      const token = (await getToken()) ?? undefined;
+      const [c, s] = await Promise.all([api.catalog(token), api.settings(token)]);
+      setCoaches(c.coaches);
+      setBookerPath(s.booker_path);
+    })();
+  }, [getToken]);
   useEffect(() => {
-    api.week(monday).then((r) => setSessions(r.sessions));
-  }, [monday]);
+    void (async () => {
+      const token = (await getToken()) ?? undefined;
+      const r = await api.week(monday, token);
+      setSessions(r.sessions);
+    })();
+  }, [monday, getToken]);
   const shown = sessions.filter((s) => !coachId || s.coach_id === coachId);
   return (
     <RequireAcademia>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Academia</h1>
-          <p className="mt-1 text-sm text-stone-600">Grilla de la semana. Filtrá por profe si hace falta.</p>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">Academia</h1>
+            <p className="mt-1 text-sm text-stone-600">Grilla de la semana. Filtrá por profe si hace falta.</p>
+          </div>
+          {bookerPath ? (
+            <Link
+              to={bookerPath}
+              className="inline-flex h-10 items-center rounded-lg bg-stone-900 px-4 text-sm font-medium text-white"
+            >
+              Reservar clases
+            </Link>
+          ) : null}
         </div>
         <AcademiaNav />
         <div className="flex flex-wrap gap-3">
@@ -383,7 +420,8 @@ export function AcademiaSesion() {
   const [msg, setMsg] = useState<string | null>(null);
   async function load() {
     if (!id) return;
-    setData(await api.session(id));
+    const token = (await getToken()) ?? undefined;
+    setData(await api.session(id, token));
   }
   useEffect(() => {
     load().catch((e) => setMsg(e.message));
@@ -447,12 +485,19 @@ export function AcademiaAjustes() {
   const { getToken } = useAuth();
   const [hours, setHours] = useState("12");
   const [msg, setMsg] = useState<string | null>(null);
+  const [bookerPath, setBookerPath] = useState("");
   useEffect(() => {
-    api
-      .settings()
-      .then((s) => setHours(String(s.cutoff_hours)))
-      .catch((e: Error) => setMsg(e.message));
-  }, []);
+    void (async () => {
+      try {
+        const token = (await getToken()) ?? undefined;
+        const s = await api.settings(token);
+        setHours(String(s.cutoff_hours));
+        setBookerPath(s.booker_path);
+      } catch (e) {
+        setMsg(e instanceof Error ? e.message : "Error");
+      }
+    })();
+  }, [getToken]);
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setMsg(null);
@@ -494,6 +539,13 @@ export function AcademiaAjustes() {
           </form>
           {msg ? <p className="text-sm">{msg}</p> : null}
         </Card>
+        {bookerPath ? (
+          <Card className="max-w-lg space-y-2">
+            <p className="text-sm font-medium">Link para jugadores</p>
+            <p className="break-all text-sm text-stone-600">{`${window.location.origin}${bookerPath}`}</p>
+            <p className="text-xs text-stone-500">Mandalo por WhatsApp. El slug no se cambia después.</p>
+          </Card>
+        ) : null}
       </div>
     </RequireAcademia>
   );
@@ -538,7 +590,7 @@ export function AcademiaProfes() {
 
   async function load() {
     const token = (await getToken()) ?? undefined;
-    const [cat, tpl] = await Promise.all([api.catalog(), api.templates(token)]);
+    const [cat, tpl] = await Promise.all([api.catalog(token), api.templates(token)]);
     setCoaches(cat.coaches);
     setLocations(cat.locations);
     setCourts(cat.courts);

@@ -38,7 +38,7 @@ Product name: **Viborea**. Metaphor (the padel shot *bandeja*) may appear in dom
 
 Copy: castellano. Schema: English. `court` → pista (es-ES default) / cancha (es-AR, es-PY) in i18n, not in SQL.
 
-**Two product areas only:** Jugador (`/jugador`) and Academia (`/academia`). Coach is a filter inside Academia, not a third app. Old `/cliente`, `/admin`, `/profe` redirect.
+**Two product areas:** booker público (`/reservar/:slug`) and Academia (`/academia`). Coach is a filter inside Academia, not a third app. `/jugador` and `/cliente` redirect to `/`.
 
 ## Stack (the product)
 
@@ -100,15 +100,15 @@ JSON (SPA):
 
 | Method | Path | Role |
 |---|---|---|
-| GET | `/api/health` | liveness + academy name |
-| GET | `/api/catalog` | locations, coaches, students |
-| GET | `/api/week?monday=YYYY-MM-DD` | materialize + list sessions |
-| GET | `/api/sessions/:id` | session + roster |
-| POST | `/api/book` | public book (`pending_payment` / waitlist) |
-| POST | `/api/bookings/:id/cancel` | self-serve cancel |
+| GET | `/api/health` | liveness |
+| GET | `/api/booker` | slug if exactly one academy (cutover 301) |
+| GET | `/api/a/:slug/week?monday=` | public booker week |
+| POST | `/api/a/:slug/book` | public book (`pending_payment` / waitlist) |
+| GET | `/api/week?monday=` | staff week (org JWT → academy_id) |
+| GET | `/api/sessions/:id` | staff session + roster |
 | POST | `/api/bookings/:id/status` | academia marks paid / pending |
 
-SPA routes: `/`, `/entrar`, `/reservar`, `/reservar/:id`, `/jugador`, `/academia`, `/academia/sesion/:id`.
+SPA routes: `/`, `/entrar`, `/reservar`, `/reservar/:slug`, `/reservar/:slug/:sessionId`, `/academia`, `/academia/sesion/:id`.
 
 If `web/dist` exists, GET (except `/piloto`) serves the SPA. Leftover HTML in `core/src/html.ts` is fallback for local-without-dist and `/piloto`. Do not add new HTML pages; add React + `/api`.
 
@@ -116,8 +116,8 @@ If `web/dist` exists, GET (except `/piloto`) serves the SPA. Leftover HTML in `c
 - Schema: `core/src/db/schema.sql`. Additive changes: new id in `core/src/db/migrate.ts`.
 - Boot: `openDb` → migrate → `seedIfEmpty` → `alignCatalog`.
 - Production DB name/user: `viborea`. Compose volume: `viborea_pgdata`. Do not publish Postgres to the internet.
-- One academy per Postgres. Who may open `/academia`: Clerk Organization (ADR 0002). Not `{slug}.viborea.com` yet.
-- Do not add `academy_id` only to decorate URLs.
+- N academias per Postgres (`academy_id` on tenant tables). Who may open `/academia`: Clerk Organization (ADR 0002 + 0003). Not `{slug}.viborea.com` yet.
+- Do not add `academy_id` only to decorate URLs. Isolation is application-scoped queries, not RLS.
 
 ## Deploy (production)
 

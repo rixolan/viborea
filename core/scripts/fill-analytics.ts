@@ -1,5 +1,5 @@
 import { addDays, bookStudent, buyPack, ensureWeek, mondayOf, openDb, setBookingStatus } from "../src/db";
-import { seedIfEmpty, alignCatalog } from "../src/seed";
+import { DG_ACADEMY_ID, seedIfEmpty, alignCatalog } from "../src/seed";
 import { parseCategory, parseSide, STUDENT_CATEGORIES, type StudentCategory } from "../src/domain/student";
 
 const EXTRA_COACHES: [string, string][] = [
@@ -38,20 +38,20 @@ await seedIfEmpty(db);
 await alignCatalog(db);
 
 for (const [id, name] of EXTRA_COACHES) {
-  await db`INSERT INTO coaches (id, name) VALUES (${id}, ${name}) ON CONFLICT (id) DO UPDATE SET name = ${name}`;
+  await db`INSERT INTO coaches (id, academy_id, name) VALUES (${id}, ${DG_ACADEMY_ID}, ${name}) ON CONFLICT (id) DO UPDATE SET name = ${name}`;
 }
 
 for (const [id, day, time, offering, loc, coach, court] of EXTRA_TEMPLATES) {
   await db`
-    INSERT INTO templates (id, offering_id, location_id, court_id, coach_id, weekday, start_time, end_time)
-    VALUES (${id}, ${offering}, ${loc}, ${court}, ${coach}, ${day}, ${time}, ${endTime(time)})
+    INSERT INTO templates (id, academy_id, offering_id, location_id, court_id, coach_id, weekday, start_time, end_time)
+    VALUES (${id}, ${DG_ACADEMY_ID}, ${offering}, ${loc}, ${court}, ${coach}, ${day}, ${time}, ${endTime(time)})
     ON CONFLICT (id) DO NOTHING
   `;
 }
 
 const origin = mondayOf(new Date());
 for (let w = -10; w <= 3; w++) {
-  await ensureWeek(db, addDays(origin, w * 7));
+  await ensureWeek(db, DG_ACADEMY_ID, addDays(origin, w * 7));
 }
 
 const studentIds: string[] = [];
@@ -62,8 +62,8 @@ for (let i = 0; i < 60; i++) {
   const category = parseCategory(STUDENT_CATEGORIES[i % STUDENT_CATEGORIES.length]) as StudentCategory;
   const side = parseSide(i % 3 === 0 ? "drive" : i % 3 === 1 ? "reves" : "");
   await db`
-    INSERT INTO students (id, name, phone, category, side)
-    VALUES (${id}, ${name}, ${phone}, ${category}, ${side})
+    INSERT INTO students (id, academy_id, name, phone, category, side)
+    VALUES (${id}, ${DG_ACADEMY_ID}, ${name}, ${phone}, ${category}, ${side})
     ON CONFLICT (id) DO UPDATE SET name = ${name}, category = ${category}, side = ${side}
   `;
   studentIds.push(id);
@@ -86,10 +86,10 @@ for (const session of sessions) {
   for (let n = 0; n < fill; n++) {
     const studentId = studentIds[(si + n * 7) % studentIds.length];
     try {
-      const status = await bookStudent(db, String(session.id), studentId, "admin");
+      const status = await bookStudent(db, DG_ACADEMY_ID, String(session.id), studentId, "admin");
       const [row] = await db`SELECT id FROM bookings WHERE session_id = ${session.id} AND student_id = ${studentId}`;
       if (row && new Date(session.starts_at as Date) < new Date() && status === "pending_payment") {
-        await setBookingStatus(db, String(row.id), "confirmed");
+        await setBookingStatus(db, DG_ACADEMY_ID, String(row.id), "confirmed");
       } else if (row && (si + n) % 11 === 0) {
         await db`UPDATE bookings SET status = 'cancelled' WHERE id = ${row.id}`;
       }
