@@ -179,6 +179,13 @@ export function Reservar() {
   return <Booker />;
 }
 
+function formatDay(iso: string) {
+  const d = new Date(iso);
+  const days = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+  const months = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+  return `${days[d.getUTCDay()]} ${d.getUTCDate()} ${months[d.getUTCMonth()]}`;
+}
+
 export function ReservarSesion() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -186,6 +193,8 @@ export function ReservarSesion() {
   const [phone, setPhone] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [wa, setWa] = useState(false);
+  const [waitlist, setWaitlist] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   useEffect(() => {
     if (!id) return;
@@ -197,39 +206,83 @@ export function ReservarSesion() {
     setMsg(null);
     try {
       const r = await api.book({ sessionId: id, name, phone });
-      setMsg(r.message ?? `Reserva ${r.status}`);
+      setWaitlist(r.status === "waitlisted");
+      setWa(Boolean(r.whatsapp_ok && r.whatsapp !== "dry-run"));
       setDone(true);
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Error");
     }
   }
   if (!session) return <p className="text-sm text-stone-500">{msg ?? "Cargando…"}</p>;
+  const rows = [
+    ["Día", formatDay(session.starts_at)],
+    ["Hora", hhmm(session.starts_at)],
+    ["Sede", session.location_name],
+    ["Cancha", session.court_name],
+    ["Profe", session.coach_name],
+    ["Clase", session.offering_name],
+  ];
+  if (done) {
+    rows.push(["A nombre de", name]);
+  }
   return (
     <div className="mx-auto max-w-md space-y-4">
       <button type="button" className="text-sm text-stone-500" onClick={() => nav("/reservar")}>
         ← Horarios
       </button>
-      <h1 className="text-2xl font-semibold">{done ? "Listo" : "Confirmar reserva"}</h1>
-      <p className="text-sm text-stone-600">
-        {session.offering_name} · {hhmm(session.starts_at)} · {session.location_name} · {session.coach_name}
-      </p>
       {done ? (
-        <p className="text-sm">{msg}</p>
+        <div className="overflow-hidden rounded-md border border-stone-200 bg-white">
+          <div className="bg-stone-900 px-5 py-6 text-white">
+            <p className="text-[11px] uppercase tracking-wide text-stone-400">Reserva</p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight">{waitlist ? "Lista de espera" : "Anotada"}</h1>
+            <p className="mt-2 text-sm text-stone-300">{waitlist ? "Si se libera un cupo, te avisamos." : "Pendiente de pago"}</p>
+          </div>
+          <dl className="divide-y divide-stone-100">
+            {rows.map(([k, v]) => (
+              <div key={k} className="flex justify-between gap-4 px-5 py-3 text-sm">
+                <dt className="text-stone-500">{k}</dt>
+                <dd className="text-right font-medium">{v}</dd>
+              </div>
+            ))}
+          </dl>
+          {wa ? (
+            <p className="border-t border-stone-100 px-5 py-3 text-sm text-stone-600">Te escribimos por WhatsApp.</p>
+          ) : null}
+          <div className="border-t border-stone-100 px-5 py-4">
+            <Button type="button" className="w-full" onClick={() => nav("/reservar")}>
+              Otra clase
+            </Button>
+          </div>
+        </div>
       ) : (
-        <form className="space-y-3" onSubmit={onSubmit}>
-          <label className="block text-sm">
-            Nombre
-            <Input value={name} onChange={(e) => setName(e.target.value)} required />
-          </label>
-          <label className="block text-sm">
-            Teléfono
-            <div className="mt-1">
-              <PhoneField value={phone} onChange={setPhone} />
-            </div>
-          </label>
-          <Button type="submit">Reservar</Button>
-          {msg ? <p className="text-sm text-red-700">{msg}</p> : null}
-        </form>
+        <>
+          <h1 className="text-2xl font-semibold">Confirmar reserva</h1>
+          <div className="rounded-md border border-stone-200 bg-white px-5 py-4 text-sm">
+            <p className="font-medium">
+              {formatDay(session.starts_at)} · {hhmm(session.starts_at)}
+            </p>
+            <p className="mt-1 text-stone-600">
+              {session.location_name} · {session.court_name} · {session.coach_name}
+            </p>
+            <p className="mt-1 text-stone-500">{session.offering_name}</p>
+          </div>
+          <form className="space-y-3" onSubmit={onSubmit}>
+            <label className="block text-sm">
+              Nombre
+              <Input value={name} onChange={(e) => setName(e.target.value)} required />
+            </label>
+            <label className="block text-sm">
+              Teléfono
+              <div className="mt-1">
+                <PhoneField value={phone} onChange={setPhone} />
+              </div>
+            </label>
+            <Button type="submit" className="w-full">
+              Reservar
+            </Button>
+            {msg ? <p className="text-sm text-red-700">{msg}</p> : null}
+          </form>
+        </>
       )}
     </div>
   );
