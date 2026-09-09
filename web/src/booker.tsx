@@ -27,13 +27,11 @@ function openSession(s: Session, now = new Date()) {
   return !s.cancelled && s.booked < s.capacity && new Date(s.starts_at) > now;
 }
 
-function formatTime(iso: string, h12: boolean) {
+function formatTime(iso: string) {
   const d = new Date(iso);
   const h = d.getUTCHours();
   const min = String(d.getUTCMinutes()).padStart(2, "0");
-  if (!h12) return `${String(h).padStart(2, "0")}:${min}`;
-  const am = h < 12;
-  return `${h % 12 || 12}:${min}${am ? "am" : "pm"}`;
+  return `${String(h).padStart(2, "0")}:${min}`;
 }
 
 function weekLabel(monday: string) {
@@ -52,7 +50,6 @@ export function Booker() {
   const [locationId, setLocationId] = useState("");
   const [coachId, setCoachId] = useState<string | null>(null);
   const [monday, setMonday] = useState(mondayISO());
-  const [h12, setH12] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [coaches, setCoaches] = useState<Coach[]>([]);
@@ -110,7 +107,7 @@ export function Booker() {
 
   const chip = (on: boolean) =>
     cn(
-      "rounded-2xl border px-5 py-4 text-left transition",
+      "rounded-md border px-4 py-3 text-left transition",
       on ? "border-stone-900 bg-stone-900 text-white" : "border-stone-200 bg-white hover:border-stone-400",
     );
 
@@ -123,9 +120,25 @@ export function Booker() {
         <p className="mt-1 text-sm text-stone-600">Sede, después profe, después un horario.</p>
         <div className="mt-5 flex flex-wrap gap-3">
           {locations.map((l) => (
-            <button key={l.id} type="button" onClick={() => pickSede(l.id)} className={chip(locationId === l.id)}>
-              <p className="font-medium">{l.name}</p>
-            </button>
+            <div key={l.id} className={chip(locationId === l.id)}>
+              <button type="button" onClick={() => pickSede(l.id)} className="text-left">
+                <p className="font-medium">{l.name}</p>
+              </button>
+              {l.address ? (
+                l.maps_url ? (
+                  <a
+                    href={l.maps_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn("mt-1 block text-xs underline", locationId === l.id ? "text-stone-300" : "text-stone-500")}
+                  >
+                    {l.address}
+                  </a>
+                ) : (
+                  <p className={cn("mt-1 text-xs", locationId === l.id ? "text-stone-300" : "text-stone-500")}>{l.address}</p>
+                )
+              ) : null}
+            </div>
           ))}
         </div>
       </section>
@@ -163,24 +176,14 @@ export function Booker() {
 
       {coachId !== null ? (
         <section>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <h2 className="text-lg font-semibold tracking-tight">{weekLabel(monday)}</h2>
-              <button type="button" className="grid h-8 w-8 place-items-center rounded-lg border border-stone-200 bg-white" onClick={() => shiftWeek(-1)}>
-                ‹
-              </button>
-              <button type="button" className="grid h-8 w-8 place-items-center rounded-lg border border-stone-200 bg-white" onClick={() => shiftWeek(1)}>
-                ›
-              </button>
-            </div>
-            <div className="flex rounded-full border border-stone-200 bg-white p-0.5 text-[11px]">
-              <button type="button" className={cn("rounded-full px-2.5 py-1", h12 ? "bg-stone-900 text-white" : "text-stone-500")} onClick={() => setH12(true)}>
-                12h
-              </button>
-              <button type="button" className={cn("rounded-full px-2.5 py-1", !h12 ? "bg-stone-900 text-white" : "text-stone-500")} onClick={() => setH12(false)}>
-                24h
-              </button>
-            </div>
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <h2 className="text-lg font-semibold tracking-tight">{weekLabel(monday)}</h2>
+            <button type="button" className="grid h-8 w-8 place-items-center rounded-md border border-stone-200 bg-white" onClick={() => shiftWeek(-1)}>
+              ‹
+            </button>
+            <button type="button" className="grid h-8 w-8 place-items-center rounded-md border border-stone-200 bg-white" onClick={() => shiftWeek(1)}>
+              ›
+            </button>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
             {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
@@ -197,9 +200,9 @@ export function Booker() {
                         key={s.id}
                         type="button"
                         onClick={() => nav(`/reservar/${s.id}`)}
-                        className="rounded-xl border border-stone-200 bg-white px-2 py-3 text-center text-sm hover:border-stone-900"
+                        className="rounded-md border border-stone-200 bg-white px-2 py-3 text-center text-sm hover:border-stone-900"
                       >
-                        {formatTime(s.starts_at, h12)}
+                        {formatTime(s.starts_at)}
                         {coachId === "" ? (
                           <span className="mt-0.5 block text-[10px] text-stone-500">{s.coach_name}</span>
                         ) : null}

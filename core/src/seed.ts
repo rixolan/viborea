@@ -31,7 +31,10 @@ export async function seedIfEmpty(db: Db): Promise<void> {
 
   await db.begin(async (tx) => {
     await tx`INSERT INTO academy (id, name, locale, currency, timezone) VALUES ('academy-alameda', 'Academia Alameda', 'es-PY', 'PYG', 'America/Asuncion')`;
-    await tx`INSERT INTO locations (id, name) VALUES ('loc-costanera', 'Lomas'), ('loc-parque', 'Elite Padel'), ('loc-ribera', 'Habana')`;
+    await tx`INSERT INTO locations (id, name, address, maps_url) VALUES
+      ('loc-costanera', 'Lomas', null, null),
+      ('loc-parque', 'Elite Padel', 'Av. Primer Presidente, Asunción', 'https://maps.app.goo.gl/p2oQg1pMPGXXMmi8A'),
+      ('loc-ribera', 'Habana', null, null)`;
 
     const courts: [string, string, string, number][] = [];
     for (let n = 1; n <= 6; n++) courts.push([`court-costanera-${n}`, "loc-costanera", `Cancha ${n}`, n]);
@@ -79,7 +82,7 @@ export async function seedIfEmpty(db: Db): Promise<void> {
 
 export async function alignCatalog(db: Db): Promise<void> {
   await db`UPDATE locations SET name = 'Lomas' WHERE id = 'loc-costanera'`;
-  await db`UPDATE locations SET name = 'Elite Padel' WHERE id = 'loc-parque'`;
+  await db`UPDATE locations SET name = 'Elite Padel', address = 'Av. Primer Presidente, Asunción', maps_url = 'https://maps.app.goo.gl/p2oQg1pMPGXXMmi8A' WHERE id = 'loc-parque'`;
   await db`UPDATE locations SET name = 'Habana' WHERE id = 'loc-ribera'`;
   await db`UPDATE coaches SET name = 'Rodrigo Avila' WHERE id = 'teacher-lucia'`;
   await db`UPDATE coaches SET name = 'Tati' WHERE id = 'teacher-marcos'`;

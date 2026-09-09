@@ -14,6 +14,10 @@ export async function migrate(db: Db): Promise<void> {
   await apply(db, "002_cutoff_hours", async () => {
     await db`ALTER TABLE academy ADD COLUMN IF NOT EXISTS cutoff_hours INTEGER NOT NULL DEFAULT 12`;
   });
+  await apply(db, "003_location_address", async () => {
+    await db`ALTER TABLE locations ADD COLUMN IF NOT EXISTS address TEXT`;
+    await db`ALTER TABLE locations ADD COLUMN IF NOT EXISTS maps_url TEXT`;
+  });
 }
 
 async function apply(db: Db, id: string, run: () => Promise<void>): Promise<void> {

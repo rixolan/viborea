@@ -9,7 +9,9 @@ CREATE TABLE academy (
 
 CREATE TABLE locations (
   id TEXT PRIMARY KEY,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  address TEXT,
+  maps_url TEXT
 );
 
 CREATE TABLE courts (

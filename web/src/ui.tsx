@@ -17,7 +17,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium transition disabled:opacity-50",
+        "inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-medium transition disabled:opacity-50",
         styles,
         className,
       )}
@@ -28,14 +28,14 @@ export function Button({
 
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("rounded-2xl border border-stone-200 bg-white p-5 shadow-sm", className)}>{children}</div>
+    <div className={cn("rounded-md border border-stone-200 bg-white p-5 shadow-sm", className)}>{children}</div>
   );
 }
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className="h-10 w-full rounded-lg border border-stone-300 bg-white px-3 text-sm outline-none ring-stone-400 focus:ring-2"
+      className="h-10 w-full rounded-md border border-stone-300 bg-white px-3 text-sm outline-none ring-stone-400 focus:ring-2"
       {...props}
     />
   );
