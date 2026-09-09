@@ -43,7 +43,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
-export type AcademySettings = { name: string; cutoff_hours: number };
+export type AcademySettings = { name: string; cutoff_hours: number; timezone: string; locale: string };
 
 export const api = {
   catalog: () => req<{ locations: Location[]; coaches: Coach[]; students: Student[] }>("/api/catalog"),

@@ -33,7 +33,7 @@ export async function handleApi(req: Request, db: Db): Promise<Response | null> 
 
   if (req.method === "GET" && url.pathname === "/api/settings") {
     const ac = await academy(db);
-    return json({ name: ac.name, cutoff_hours: ac.cutoff_hours });
+    return json({ name: ac.name, cutoff_hours: ac.cutoff_hours, timezone: ac.timezone, locale: ac.locale });
   }
 
   if (req.method === "PATCH" && url.pathname === "/api/settings") {

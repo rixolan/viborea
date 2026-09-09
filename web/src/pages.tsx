@@ -4,6 +4,7 @@ import { CreateOrganization, SignUp, useAuth, useSignIn } from "@clerk/clerk-rea
 import { api, type Session, type SessionDetail } from "./api";
 import { RequireAcademia, RequireAuth } from "./auth";
 import { Badge, Button, Card, Input } from "./ui";
+import { Booker } from "./booker";
 import { WeekGrid, hhmm } from "./week-grid";
 
 function mondayISO(d = new Date()) {
@@ -174,82 +175,7 @@ function WeekNav({ monday, onMonday }: { monday: string; onMonday: (v: string) =
 
 
 export function Reservar() {
-  const [monday, setMonday] = useState(mondayISO());
-  const [locationId, setLocationId] = useState("");
-  const [coachId, setCoachId] = useState("");
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
-  const [coaches, setCoaches] = useState<{ id: string; name: string }[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    api
-      .catalog()
-      .then((c) => {
-        setLocations(c.locations);
-        setCoaches(c.coaches);
-        if (c.locations[0] && !locationId) setLocationId(c.locations[0].id);
-      })
-      .catch((e: Error) => setError(e.message));
-  }, []);
-  useEffect(() => {
-    api
-      .week(monday)
-      .then((r) => setSessions(r.sessions.filter((s) => !s.cancelled)))
-      .catch((e: Error) => setError(e.message));
-  }, [monday]);
-  const shown = useMemo(
-    () =>
-      sessions.filter((s) => (!locationId || s.location_id === locationId) && (!coachId || s.coach_id === coachId)),
-    [sessions, locationId, coachId],
-  );
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Reservar</h1>
-        <p className="mt-1 text-sm text-stone-600">Sede, profe y un hueco en la semana.</p>
-      </div>
-      {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <div className="flex flex-wrap gap-3">
-        <WeekNav monday={monday} onMonday={setMonday} />
-        <select
-          className="h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm"
-          value={locationId}
-          onChange={(e) => setLocationId(e.target.value)}
-        >
-          {locations.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.name}
-            </option>
-          ))}
-        </select>
-        <select
-          className="h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm"
-          value={coachId}
-          onChange={(e) => setCoachId(e.target.value)}
-        >
-          <option value="">Todos los profes</option>
-          {coaches.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <WeekGrid
-        monday={monday}
-        sessions={shown}
-        action={(s) =>
-          s.booked >= s.capacity ? (
-            <Badge>Completa</Badge>
-          ) : (
-            <Link to={`/reservar/${s.id}`} className="font-medium underline">
-              Reservar
-            </Link>
-          )
-        }
-      />
-    </div>
-  );
+  return <Booker />;
 }
 
 export function ReservarSesion() {
