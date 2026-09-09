@@ -4,7 +4,7 @@ import { CreateOrganization, SignUp, useAuth, useSignIn } from "@clerk/clerk-rea
 import { api, type Session, type SessionDetail } from "./api";
 import { RequireAcademia, RequireAuth } from "./auth";
 import { Badge, Button, Card, Input } from "./ui";
-import { Booker } from "./booker";
+import { Booker, coachPhoto } from "./booker";
 import { WeekGrid, hhmm } from "./week-grid";
 
 function mondayISO(d = new Date()) {
@@ -254,6 +254,9 @@ function AcademiaNav() {
       <NavLink to="/academia" end className={item}>
         Grilla
       </NavLink>
+      <NavLink to="/academia/profes" className={item}>
+        Profes
+      </NavLink>
       <NavLink to="/academia/ajustes" className={item}>
         Reservas
       </NavLink>
@@ -427,6 +430,189 @@ export function AcademiaAjustes() {
             <Button type="submit">Guardar</Button>
           </form>
           {msg ? <p className="text-sm">{msg}</p> : null}
+        </Card>
+      </div>
+    </RequireAcademia>
+  );
+}
+
+const WEEKDAYS = [
+  ["monday", "Lunes"],
+  ["tuesday", "Martes"],
+  ["wednesday", "Miércoles"],
+  ["thursday", "Jueves"],
+  ["friday", "Viernes"],
+  ["saturday", "Sábado"],
+  ["sunday", "Domingo"],
+] as const;
+
+export function AcademiaProfes() {
+  const { getToken } = useAuth();
+  const [coachId, setCoachId] = useState("");
+  const [coaches, setCoaches] = useState<{ id: string; name: string }[]>([]);
+  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
+  const [courts, setCourts] = useState<{ id: string; location_id: string; name: string }[]>([]);
+  const [offerings, setOfferings] = useState<{ id: string; name: string }[]>([]);
+  const [templates, setTemplates] = useState<
+    Array<{
+      id: string;
+      coach_id: string;
+      weekday: string;
+      start_time: string;
+      end_time: string;
+      location_name: string;
+      court_name: string;
+      offering_name: string;
+      location_id: string;
+    }>
+  >([]);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [locationId, setLocationId] = useState("");
+  const [courtId, setCourtId] = useState("");
+  const [offeringId, setOfferingId] = useState("");
+  const [weekday, setWeekday] = useState("monday");
+  const [startTime, setStartTime] = useState("15:00");
+
+  async function load() {
+    const token = (await getToken()) ?? undefined;
+    const [cat, tpl] = await Promise.all([api.catalog(), api.templates(token)]);
+    setCoaches(cat.coaches);
+    setLocations(cat.locations);
+    setCourts(cat.courts);
+    setOfferings(cat.offerings);
+    setTemplates(tpl.templates);
+    if (!coachId && cat.coaches[0]) setCoachId(cat.coaches[0].id);
+    if (!locationId && cat.locations[0]) setLocationId(cat.locations[0].id);
+    if (!offeringId && cat.offerings[0]) setOfferingId(cat.offerings[0].id);
+  }
+
+  useEffect(() => {
+    load().catch((e: Error) => setMsg(e.message));
+  }, []);
+
+  const courtsHere = courts.filter((c) => c.location_id === locationId);
+  const mine = templates.filter((t) => t.coach_id === coachId);
+
+  async function addSlot(e: FormEvent) {
+    e.preventDefault();
+    setMsg(null);
+    const token = (await getToken()) ?? undefined;
+    const court = courtId || courtsHere[0]?.id;
+    if (!court) {
+      setMsg("Falta cancha en esa sede.");
+      return;
+    }
+    try {
+      await api.addTemplate(
+        { offeringId, locationId, courtId: court, coachId, weekday, startTime },
+        token,
+      );
+      await load();
+      setMsg("Horario agregado a la planilla madre.");
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Error");
+    }
+  }
+
+  async function removeSlot(id: string) {
+    const token = (await getToken()) ?? undefined;
+    await api.deleteTemplate(id, token);
+    await load();
+  }
+
+  return (
+    <RequireAcademia>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold">Profes</h1>
+          <p className="mt-1 text-sm text-stone-600">Disponibilidad semanal (planilla madre) por entrenador.</p>
+        </div>
+        <AcademiaNav />
+        <div className="flex flex-wrap gap-3">
+          {coaches.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setCoachId(c.id)}
+              className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm ${coachId === c.id ? "border-stone-900 bg-stone-900 text-white" : "border-stone-200 bg-white"}`}
+            >
+              <img src={coachPhoto(c.id)} alt="" className="h-7 w-7 rounded-full bg-stone-200" />
+              {c.name}
+            </button>
+          ))}
+        </div>
+        {msg ? <p className="text-sm">{msg}</p> : null}
+        <Card>
+          <p className="mb-3 font-medium">Horarios fijos</p>
+          <ul className="divide-y text-sm">
+            {mine.map((t) => (
+              <li key={t.id} className="flex items-center justify-between py-2">
+                <span>
+                  {WEEKDAYS.find((w) => w[0] === t.weekday)?.[1] ?? t.weekday} {t.start_time}–{t.end_time}
+                  <span className="text-stone-400">
+                    {" "}
+                    · {t.location_name} · {t.court_name} · {t.offering_name}
+                  </span>
+                </span>
+                <button type="button" className="text-xs underline" onClick={() => removeSlot(t.id)}>
+                  Quitar
+                </button>
+              </li>
+            ))}
+            {mine.length === 0 ? <li className="py-2 text-stone-500">Sin horarios.</li> : null}
+          </ul>
+        </Card>
+        <Card className="max-w-lg">
+          <p className="mb-3 font-medium">Agregar a la planilla</p>
+          <form className="grid gap-3 sm:grid-cols-2" onSubmit={addSlot}>
+            <label className="text-sm">
+              Día
+              <select className="mt-1 h-10 w-full rounded-lg border px-2 text-sm" value={weekday} onChange={(e) => setWeekday(e.target.value)}>
+                {WEEKDAYS.map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              Hora
+              <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} required />
+            </label>
+            <label className="text-sm">
+              Sede
+              <select className="mt-1 h-10 w-full rounded-lg border px-2 text-sm" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+                {locations.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              Cancha
+              <select className="mt-1 h-10 w-full rounded-lg border px-2 text-sm" value={courtId} onChange={(e) => setCourtId(e.target.value)}>
+                {courtsHere.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm sm:col-span-2">
+              Clase
+              <select className="mt-1 h-10 w-full rounded-lg border px-2 text-sm" value={offeringId} onChange={(e) => setOfferingId(e.target.value)}>
+                {offerings.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="sm:col-span-2">
+              <Button type="submit">Agregar</Button>
+            </div>
+          </form>
         </Card>
       </div>
     </RequireAcademia>

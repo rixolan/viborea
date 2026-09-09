@@ -1,47 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type Session } from "./api";
+import { api, type Coach, type Location, type Session } from "./api";
 import { cn } from "./ui";
 
 const DOW = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"];
-const MONTHS = [
-  "Enero",
-  "Febrero",
-  "Marzo",
-  "Abril",
-  "Mayo",
-  "Junio",
-  "Julio",
-  "Agosto",
-  "Septiembre",
-  "Octubre",
-  "Noviembre",
-  "Diciembre",
-];
+const MONTH_SHORT = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
-function mondayOf(d: Date) {
+export function coachPhoto(id: string) {
+  return `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(id)}&backgroundColor=d6d3d1`;
+}
+
+function mondayISO(d = new Date()) {
   const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const day = x.getUTCDay() || 7;
   x.setUTCDate(x.getUTCDate() - day + 1);
   return x.toISOString().slice(0, 10);
 }
 
-function mondaysInMonth(year: number, month: number) {
-  const first = new Date(Date.UTC(year, month, 1));
-  const last = new Date(Date.UTC(year, month + 1, 0));
-  const out: string[] = [];
-  let m = mondayOf(first);
-  while (new Date(`${m}T00:00:00.000Z`) <= last) {
-    out.push(m);
-    const n = new Date(`${m}T00:00:00.000Z`);
-    n.setUTCDate(n.getUTCDate() + 7);
-    m = n.toISOString().slice(0, 10);
-  }
-  return out;
-}
-
-function ymd(d: Date) {
-  return d.toISOString().slice(0, 10);
+function addDays(monday: string, n: number) {
+  const d = new Date(`${monday}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d;
 }
 
 function openSession(s: Session, now = new Date()) {
@@ -54,27 +33,30 @@ function formatTime(iso: string, h12: boolean) {
   const min = String(d.getUTCMinutes()).padStart(2, "0");
   if (!h12) return `${String(h).padStart(2, "0")}:${min}`;
   const am = h < 12;
-  const h12n = h % 12 || 12;
-  return `${h12n}:${min}${am ? "am" : "pm"}`;
+  return `${h % 12 || 12}:${min}${am ? "am" : "pm"}`;
 }
 
-function ordinalEs(n: number) {
-  return `${n}`;
+function weekLabel(monday: string) {
+  const a = addDays(monday, 0);
+  const b = addDays(monday, 6);
+  return `${a.getUTCDate()}–${b.getUTCDate()} ${MONTH_SHORT[b.getUTCMonth()]} ${b.getUTCFullYear()}`;
+}
+
+function dayHeading(monday: string, offset: number) {
+  const d = addDays(monday, offset);
+  return `${DOW[offset].slice(0, 3)} ${d.getUTCDate()}`;
 }
 
 export function Booker() {
   const nav = useNavigate();
-  const now = new Date();
-  const [year, setYear] = useState(now.getUTCFullYear());
-  const [month, setMonth] = useState(now.getUTCMonth());
-  const [selected, setSelected] = useState(ymd(now));
-  const [h12, setH12] = useState(false);
+  const [step, setStep] = useState<"sede" | "profe" | "horarios">("sede");
   const [locationId, setLocationId] = useState("");
-  const [coachId, setCoachId] = useState("");
+  const [coachId, setCoachId] = useState<string>("");
+  const [monday, setMonday] = useState(mondayISO());
+  const [h12, setH12] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
-  const [coaches, setCoaches] = useState<{ id: string; name: string }[]>([]);
-  const [academy, setAcademy] = useState({ name: "Academia", timezone: "UTC" });
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [coaches, setCoaches] = useState<Coach[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,207 +65,173 @@ export function Booker() {
       .then((c) => {
         setLocations(c.locations);
         setCoaches(c.coaches);
-        setLocationId((id) => id || c.locations[0]?.id || "");
       })
       .catch((e: Error) => setError(e.message));
-    api
-      .settings()
-      .then((s) => setAcademy({ name: s.name, timezone: s.timezone }))
-      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
-    const weeks = mondaysInMonth(year, month);
-    Promise.all(weeks.map((m) => api.week(m)))
-      .then((rows) => setSessions(rows.flatMap((r) => r.sessions.filter((s) => !s.cancelled))))
+    if (step === "sede") return;
+    api
+      .week(monday)
+      .then((r) => setSessions(r.sessions.filter((s) => !s.cancelled)))
       .catch((e: Error) => setError(e.message));
-  }, [year, month]);
+  }, [monday, step]);
 
-  const filtered = useMemo(
-    () =>
-      sessions.filter((s) => (!locationId || s.location_id === locationId) && (!coachId || s.coach_id === coachId)),
-    [sessions, locationId, coachId],
+  const atSede = useMemo(
+    () => sessions.filter((s) => s.location_id === locationId && openSession(s)),
+    [sessions, locationId],
   );
 
-  const openByDay = useMemo(() => {
-    const map = new Map<string, Session[]>();
-    for (const s of filtered) {
-      if (!openSession(s)) continue;
-      const key = s.starts_at.slice(0, 10);
-      const list = map.get(key) ?? [];
-      list.push(s);
-      map.set(key, list);
-    }
-    for (const list of map.values()) list.sort((a, b) => a.starts_at.localeCompare(b.starts_at));
-    return map;
-  }, [filtered]);
+  const coachesHere = useMemo(() => {
+    const ids = new Set(atSede.map((s) => s.coach_id));
+    return coaches.filter((c) => ids.has(c.id));
+  }, [atSede, coaches]);
 
-  useEffect(() => {
-    if (openByDay.has(selected)) return;
-    const first = [...openByDay.keys()].sort()[0];
-    if (first) setSelected(first);
-  }, [openByDay, selected]);
+  const slots = useMemo(() => {
+    const list = coachId ? atSede.filter((s) => s.coach_id === coachId) : atSede;
+    return list.sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  }, [atSede, coachId]);
 
-  const first = new Date(Date.UTC(year, month, 1));
-  const startPad = (first.getUTCDay() + 6) % 7;
-  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  const cells: Array<number | null> = [...Array(startPad).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
-  while (cells.length % 7) cells.push(null);
+  const loc = locations.find((l) => l.id === locationId);
+  const coach = coaches.find((c) => c.id === coachId);
 
-  const selectedDate = new Date(`${selected}T00:00:00.000Z`);
-  const slots = openByDay.get(selected) ?? [];
-  const today = ymd(now);
-
-  function shiftMonth(delta: number) {
-    const d = new Date(Date.UTC(year, month + delta, 1));
-    setYear(d.getUTCFullYear());
-    setMonth(d.getUTCMonth());
+  function pickSede(id: string) {
+    setLocationId(id);
+    setCoachId("");
+    setStep("profe");
   }
 
-  const locName = locations.find((l) => l.id === locationId)?.name ?? "Sede";
-  const coachName = coaches.find((c) => c.id === coachId)?.name ?? "Cualquier profe";
-  const selectCls =
-    "h-10 w-full rounded-xl border border-white/10 bg-neutral-900 px-3 text-sm text-neutral-100 outline-none";
+  function pickCoach(id: string) {
+    setCoachId(id);
+    setStep("horarios");
+  }
+
+  function shiftWeek(delta: number) {
+    const d = addDays(monday, delta * 7);
+    setMonday(d.toISOString().slice(0, 10));
+  }
 
   return (
     <div className="overflow-hidden rounded-3xl bg-neutral-950 text-neutral-100 shadow-xl ring-1 ring-white/10">
       {error ? <p className="px-6 pt-4 text-sm text-red-400">{error}</p> : null}
-      <div className="grid gap-0 lg:grid-cols-[220px_1fr_240px]">
-        <aside className="border-b border-white/10 p-6 lg:border-b-0 lg:border-r">
-          <p className="text-xs text-neutral-500">Academia</p>
-          <p className="mt-1 text-lg font-semibold tracking-tight">{academy.name}</p>
-          <p className="mt-6 text-sm font-medium">Clase</p>
-          <p className="mt-1 text-sm text-neutral-400">
-            {locName}
-            <span className="text-neutral-600"> · </span>
-            {coachName}
-          </p>
-          <label className="mt-6 block text-xs text-neutral-500">
-            Sede
-            <select className={`${selectCls} mt-1`} value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-              {locations.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="mt-4 block text-xs text-neutral-500">
-            Profe
-            <select className={`${selectCls} mt-1`} value={coachId} onChange={(e) => setCoachId(e.target.value)}>
-              <option value="">Todos</option>
-              {coaches.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p className="mt-8 text-xs text-neutral-500">{academy.timezone}</p>
-        </aside>
 
-        <section className="p-6">
-          <div className="mb-6 flex items-center justify-between">
-            <h1 className="text-xl font-semibold tracking-tight">
-              {MONTHS[month]} <span className="font-normal text-neutral-500">{year}</span>
-            </h1>
-            <div className="flex gap-1">
+      {step === "sede" ? (
+        <div className="p-8">
+          <p className="text-xs uppercase tracking-wide text-neutral-500">Paso 1</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Elegí sede</h1>
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            {locations.map((l) => (
               <button
+                key={l.id}
                 type="button"
-                className="grid h-8 w-8 place-items-center rounded-lg text-neutral-400 hover:bg-white/5"
-                onClick={() => shiftMonth(-1)}
+                onClick={() => pickSede(l.id)}
+                className="rounded-2xl border border-white/10 bg-neutral-900 px-5 py-8 text-left hover:border-white/25 hover:bg-neutral-800"
               >
-                ‹
+                <p className="text-lg font-medium">{l.name}</p>
+                <p className="mt-1 text-sm text-neutral-500">Ver profes y horarios</p>
               </button>
-              <button
-                type="button"
-                className="grid h-8 w-8 place-items-center rounded-lg text-neutral-400 hover:bg-white/5"
-                onClick={() => shiftMonth(1)}
-              >
-                ›
-              </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-7 gap-2 text-center text-[11px] font-medium tracking-wide text-neutral-500">
-            {DOW.map((d) => (
-              <div key={d} className="py-1">
-                {d}
-              </div>
             ))}
           </div>
-          <div className="mt-2 grid grid-cols-7 gap-2">
-            {cells.map((day, i) => {
-              if (day == null) return <div key={`e-${i}`} />;
-              const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-              const has = (openByDay.get(iso)?.length ?? 0) > 0;
-              const isSel = iso === selected;
-              const isToday = iso === today;
-              return (
-                <button
-                  key={iso}
-                  type="button"
-                  disabled={!has}
-                  onClick={() => has && setSelected(iso)}
-                  className={cn(
-                    "relative grid aspect-square place-items-center rounded-xl text-sm transition",
-                    isSel && "bg-white font-semibold text-neutral-950",
-                    !isSel && has && "bg-neutral-800 text-white hover:bg-neutral-700",
-                    !has && "cursor-default text-neutral-600",
-                  )}
-                >
-                  {day}
-                  {isToday && !isSel ? (
-                    <span className="absolute bottom-1.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-neutral-400" />
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        </section>
+        </div>
+      ) : null}
 
-        <aside className="border-t border-white/10 p-6 lg:border-t-0 lg:border-l">
-          <div className="mb-4 flex items-center justify-between">
-            <p className="font-medium">
-              {DOW[selectedDate.getUTCDay() === 0 ? 6 : selectedDate.getUTCDay() - 1].slice(0, 3)} {ordinalEs(selectedDate.getUTCDate())}
-            </p>
-            <div className="flex rounded-full bg-neutral-900 p-0.5 text-[11px]">
+      {step === "profe" ? (
+        <div className="p-8">
+          <button type="button" className="text-sm text-neutral-500 hover:text-white" onClick={() => setStep("sede")}>
+            ← {loc?.name}
+          </button>
+          <p className="mt-4 text-xs uppercase tracking-wide text-neutral-500">Paso 2</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">¿Con quién jugás?</h1>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <button
+              type="button"
+              onClick={() => pickCoach("")}
+              className="rounded-2xl border border-white/10 bg-neutral-900 p-5 text-center hover:border-white/25 hover:bg-neutral-800"
+            >
+              <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-neutral-800 text-2xl text-neutral-400">
+                *
+              </div>
+              <p className="mt-3 font-medium">Cualquier profe</p>
+              <p className="mt-1 text-xs text-neutral-500">Todos los horarios de {loc?.name}</p>
+            </button>
+            {coachesHere.map((c) => (
               <button
+                key={c.id}
                 type="button"
-                className={cn("rounded-full px-2 py-1", h12 ? "bg-neutral-700" : "text-neutral-500")}
-                onClick={() => setH12(true)}
+                onClick={() => pickCoach(c.id)}
+                className="rounded-2xl border border-white/10 bg-neutral-900 p-5 text-center hover:border-white/25 hover:bg-neutral-800"
               >
+                <img
+                  src={coachPhoto(c.id)}
+                  alt=""
+                  className="mx-auto h-20 w-20 rounded-full bg-neutral-800 object-cover"
+                />
+                <p className="mt-3 font-medium">{c.name}</p>
+              </button>
+            ))}
+          </div>
+          {coachesHere.length === 0 ? (
+            <p className="mt-6 text-sm text-neutral-500">Esta semana no hay clases en esta sede.</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {step === "horarios" ? (
+        <div className="p-6">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <button type="button" className="text-sm text-neutral-500 hover:text-white" onClick={() => setStep("profe")}>
+                ← {coach ? coach.name : "Cualquier profe"}
+              </button>
+              <div className="mt-2 flex items-center gap-3">
+                <h1 className="text-xl font-semibold tracking-tight">{weekLabel(monday)}</h1>
+                <button type="button" className="grid h-8 w-8 place-items-center rounded-lg hover:bg-white/5" onClick={() => shiftWeek(-1)}>
+                  ‹
+                </button>
+                <button type="button" className="grid h-8 w-8 place-items-center rounded-lg hover:bg-white/5" onClick={() => shiftWeek(1)}>
+                  ›
+                </button>
+              </div>
+            </div>
+            <div className="flex rounded-full bg-neutral-900 p-0.5 text-[11px]">
+              <button type="button" className={cn("rounded-full px-2.5 py-1", h12 ? "bg-neutral-700" : "text-neutral-500")} onClick={() => setH12(true)}>
                 12h
               </button>
-              <button
-                type="button"
-                className={cn("rounded-full px-2 py-1", !h12 ? "bg-neutral-700" : "text-neutral-500")}
-                onClick={() => setH12(false)}
-              >
+              <button type="button" className={cn("rounded-full px-2.5 py-1", !h12 ? "bg-neutral-700" : "text-neutral-500")} onClick={() => setH12(false)}>
                 24h
               </button>
             </div>
           </div>
-          <div className="flex max-h-[28rem] flex-col gap-2 overflow-y-auto pr-1">
-            {slots.length === 0 ? (
-              <p className="text-sm text-neutral-500">No hay horarios este día.</p>
-            ) : (
-              slots.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => nav(`/reservar/${s.id}`)}
-                  className="rounded-xl border border-white/10 bg-neutral-900 px-4 py-3 text-sm hover:border-white/20 hover:bg-neutral-800"
-                >
-                  <span className="font-medium">{formatTime(s.starts_at, h12)}</span>
-                  <span className="mt-0.5 block text-[11px] text-neutral-500">
-                    {s.court_name} · {s.coach_name} · {s.booked}/{s.capacity}
-                  </span>
-                </button>
-              ))
-            )}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+            {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
+              const dayIso = addDays(monday, offset).toISOString().slice(0, 10);
+              const daySlots = slots.filter((s) => s.starts_at.slice(0, 10) === dayIso);
+              return (
+                <div key={offset}>
+                  <p className="mb-3 text-center text-[11px] font-medium tracking-wide text-neutral-500">
+                    {dayHeading(monday, offset)}
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {daySlots.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => nav(`/reservar/${s.id}`)}
+                        className="rounded-xl border border-white/15 bg-neutral-950 px-2 py-3 text-center text-sm hover:border-white/30 hover:bg-neutral-900"
+                      >
+                        {formatTime(s.starts_at, h12)}
+                        {!coachId ? (
+                          <span className="mt-0.5 block text-[10px] text-neutral-500">{s.coach_name}</span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </aside>
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

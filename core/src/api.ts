@@ -2,8 +2,11 @@ import type { Db } from "./db";
 import {
   academy,
   catalogs,
+  createTemplate,
+  deleteTemplate,
   ensureWeek,
   getSession,
+  listTemplates,
   mondayOf,
   publicBook,
   selfServeCancel,
@@ -14,7 +17,7 @@ import {
 } from "./db";
 import { parseCategory, parseSide } from "./domain/student";
 import { CutoffError } from "./domain/cutoff";
-import type { BookingStatus } from "./domain/types";
+import type { BookingStatus, DayOfWeek } from "./domain/types";
 import { requireAcademy } from "./auth";
 import { configFromEnv as whatsappConfig, notifyReservation } from "./notify/whatsapp";
 
@@ -48,9 +51,56 @@ export async function handleApi(req: Request, db: Db): Promise<Response | null> 
       return json({ error: msg }, 400);
     }
   }
+
   if (req.method === "GET" && url.pathname === "/api/catalog") {
     const cat = await catalogs(db);
-    return json({ locations: cat.locations, coaches: cat.coaches, students: cat.students });
+    return json({
+      locations: cat.locations,
+      coaches: cat.coaches,
+      students: cat.students,
+      courts: cat.courts,
+      offerings: cat.offerings,
+    });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/templates") {
+    const denied = await requireAcademy(req);
+    if (denied) return denied;
+    return json({ templates: await listTemplates(db) });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/templates") {
+    const denied = await requireAcademy(req);
+    if (denied) return denied;
+    const body = (await req.json()) as {
+      offeringId?: string;
+      locationId?: string;
+      courtId?: string;
+      coachId?: string;
+      weekday?: DayOfWeek;
+      startTime?: string;
+    };
+    try {
+      const id = await createTemplate(db, {
+        offeringId: body.offeringId ?? "",
+        locationId: body.locationId ?? "",
+        courtId: body.courtId ?? "",
+        coachId: body.coachId ?? "",
+        weekday: body.weekday ?? "monday",
+        startTime: body.startTime ?? "",
+      });
+      return json({ id });
+    } catch (err) {
+      return json({ error: err instanceof Error ? err.message : "Error" }, 400);
+    }
+  }
+
+  const delTpl = url.pathname.match(/^\/api\/templates\/([^/]+)$/);
+  if (req.method === "DELETE" && delTpl) {
+    const denied = await requireAcademy(req);
+    if (denied) return denied;
+    await deleteTemplate(db, decodeURIComponent(delTpl[1]));
+    return json({ ok: true });
   }
 
   if (req.method === "GET" && url.pathname === "/api/week") {

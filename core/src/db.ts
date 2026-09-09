@@ -543,5 +543,62 @@ async function applyCancel(
   }
   await db`UPDATE bookings SET status = ${"cancelled"} WHERE id = ${booking.id as string}`;
 }
-
 export { OverlapError, mondayOf, dateKey, addDays };
+
+export type TemplateView = {
+  id: string;
+  offering_id: string;
+  offering_name: string;
+  location_id: string;
+  location_name: string;
+  court_id: string;
+  court_name: string;
+  coach_id: string;
+  coach_name: string;
+  weekday: DayOfWeek;
+  start_time: string;
+  end_time: string;
+};
+
+export async function listTemplates(db: Db): Promise<TemplateView[]> {
+  const rows = await db`
+    SELECT t.id, t.offering_id, o.name AS offering_name, t.location_id, l.name AS location_name,
+      t.court_id, c.name AS court_name, t.coach_id, ch.name AS coach_name, t.weekday, t.start_time, t.end_time
+    FROM templates t
+    JOIN offerings o ON o.id = t.offering_id
+    JOIN locations l ON l.id = t.location_id
+    JOIN courts c ON c.id = t.court_id
+    JOIN coaches ch ON ch.id = t.coach_id
+    ORDER BY ch.name, t.weekday, t.start_time
+  `;
+  return rows as unknown as TemplateView[];
+}
+
+export async function createTemplate(
+  db: Db,
+  input: {
+    offeringId: string;
+    locationId: string;
+    courtId: string;
+    coachId: string;
+    weekday: DayOfWeek;
+    startTime: string;
+  },
+): Promise<string> {
+  const [off] = await db`SELECT duration_minutes FROM offerings WHERE id = ${input.offeringId}`;
+  if (!off) throw new Error("Offering inexistente");
+  const [h, m] = input.startTime.split(":").map(Number);
+  if (!Number.isInteger(h) || !Number.isInteger(m)) throw new Error("Hora inválida");
+  const end = new Date(Date.UTC(2000, 0, 1, h, m + Number(off.duration_minutes), 0));
+  const endTime = `${String(end.getUTCHours()).padStart(2, "0")}:${String(end.getUTCMinutes()).padStart(2, "0")}`;
+  const id = `tpl-${crypto.randomUUID().slice(0, 8)}`;
+  await db`
+    INSERT INTO templates (id, offering_id, location_id, court_id, coach_id, weekday, start_time, end_time)
+    VALUES (${id}, ${input.offeringId}, ${input.locationId}, ${input.courtId}, ${input.coachId}, ${input.weekday}, ${input.startTime}, ${endTime})
+  `;
+  return id;
+}
+
+export async function deleteTemplate(db: Db, id: string): Promise<void> {
+  await db`DELETE FROM templates WHERE id = ${id}`;
+}
