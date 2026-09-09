@@ -139,15 +139,9 @@ export async function handleApi(req: Request, db: Db): Promise<Response | null> 
         ? `Viborea: ${session.offering_name} ${when} · ${session.location_name} · ${session.court_name} · ${session.coach_name}. Reserva ${status}.`
         : `Viborea: reserva ${status}.`;
       const sent = await notifyReservation(whatsappConfig(), body.phone ?? "", text);
-      const wa =
-        sent.channel === "dry-run"
-          ? "WhatsApp simulado (faltan WHATSAPP_TEST_*)."
-          : sent.ok
-            ? "WhatsApp enviado."
-            : `WhatsApp no salió: ${sent.error ?? "error"}`;
-      const message =
-        status === "waitlisted" ? `Lista de espera. ${wa}` : `Reserva pendiente de pago. ${wa}`;
-      return json({ status, message, whatsapp: sent.channel, whatsapp_ok: sent.ok });
+      const base = status === "waitlisted" ? "Lista de espera." : "Reserva anotada. Pendiente de pago.";
+      const wa = sent.ok && sent.channel !== "dry-run" ? " Te escribimos por WhatsApp." : "";
+      return json({ status, message: base + wa, whatsapp: sent.channel, whatsapp_ok: sent.ok });
     } catch (err) {
       return json({ error: err instanceof Error ? err.message : "Error" }, 400);
     }

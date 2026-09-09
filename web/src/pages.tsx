@@ -184,6 +184,7 @@ export function ReservarSesion() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   useEffect(() => {
     if (!id) return;
@@ -192,9 +193,11 @@ export function ReservarSesion() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!id) return;
+    setMsg(null);
     try {
       const r = await api.book({ sessionId: id, name, phone });
       setMsg(r.message ?? `Reserva ${r.status}`);
+      setDone(true);
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Error");
     }
@@ -202,25 +205,29 @@ export function ReservarSesion() {
   if (!session) return <p className="text-sm text-stone-500">{msg ?? "Cargando…"}</p>;
   return (
     <div className="mx-auto max-w-md space-y-4">
-      <button type="button" className="text-sm text-stone-500" onClick={() => nav(-1)}>
-        ← Volver
+      <button type="button" className="text-sm text-stone-500" onClick={() => nav("/reservar")}>
+        ← Horarios
       </button>
-      <h1 className="text-2xl font-semibold">Confirmar reserva</h1>
+      <h1 className="text-2xl font-semibold">{done ? "Listo" : "Confirmar reserva"}</h1>
       <p className="text-sm text-stone-600">
         {session.offering_name} · {hhmm(session.starts_at)} · {session.location_name} · {session.coach_name}
       </p>
-      <form className="space-y-3" onSubmit={onSubmit}>
-        <label className="block text-sm">
-          Nombre
-          <Input value={name} onChange={(e) => setName(e.target.value)} required />
-        </label>
-        <label className="block text-sm">
-          Teléfono
-          <Input value={phone} onChange={(e) => setPhone(e.target.value)} required />
-        </label>
-        <Button type="submit">Reservar</Button>
-      </form>
-      {msg ? <p className="text-sm">{msg}</p> : null}
+      {done ? (
+        <p className="text-sm">{msg}</p>
+      ) : (
+        <form className="space-y-3" onSubmit={onSubmit}>
+          <label className="block text-sm">
+            Nombre
+            <Input value={name} onChange={(e) => setName(e.target.value)} required />
+          </label>
+          <label className="block text-sm">
+            Teléfono
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} required placeholder="+595981..." />
+          </label>
+          <Button type="submit">Reservar</Button>
+          {msg ? <p className="text-sm text-red-700">{msg}</p> : null}
+        </form>
+      )}
     </div>
   );
 }
