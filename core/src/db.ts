@@ -15,9 +15,10 @@ import {
 import { parseCategory, parseSide, type PlayingSide, type StudentCategory } from "./domain/student";
 import { parseSlug } from "./domain/slug";
 import { parsePhone } from "./domain/phone";
-import { OCCUPYING_BOOKING_STATUSES, type BookingStatus } from "./domain/types";
+import { DAY_FROM_JS, OCCUPYING_BOOKING_STATUSES, type BookingStatus } from "./domain/types";
 import { OverlapError } from "./domain/types";
 import { cutoffMessage, DEFAULT_CUTOFF_HOURS, parseCutoffHours, selfServeOpen } from "./domain/cutoff";
+import { hoursInRange, openSlotId, parseOpenSlotId, slotEnds, slotStarts } from "./domain/availability";
 import { connect, type Db } from "./db/pg";
 import { migrate } from "./db/migrate";
 
@@ -315,7 +316,125 @@ export async function weekSessions(db: Db, academyId: string, monday: Date): Pro
   return rows.map((row) => sessionFrom(row as Record<string, unknown>));
 }
 
+function occupies(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean {
+  return aStart < bEnd && bStart < aEnd;
+}
+
+function occupyingOf(sessions: SessionView[]): SessionView[] {
+  return sessions.filter((s) => s.cancelled === 0);
+}
+
+export async function weekGrid(db: Db, academyId: string, monday: Date): Promise<SessionView[]> {
+  const from = mondayOf(monday);
+  const locked = occupyingOf(await weekSessions(db, academyId, monday));
+  const [blocks, courts, coaches, locations] = await Promise.all([
+    db`SELECT coach_id, location_id, weekday, start_time, end_time FROM coach_availability WHERE academy_id = ${academyId}`,
+    db`SELECT id, location_id FROM courts WHERE academy_id = ${academyId}`,
+    db`SELECT id, name FROM coaches WHERE academy_id = ${academyId}`,
+    db`SELECT id, name FROM locations WHERE academy_id = ${academyId}`,
+  ]);
+  const coachName = new Map((coaches as { id: string; name: string }[]).map((c) => [c.id, c.name]));
+  const locName = new Map((locations as { id: string; name: string }[]).map((l) => [l.id, l.name]));
+  const courtsAt = (locationId: string) => (courts as { id: string; location_id: string }[]).filter((c) => c.location_id === locationId);
+  const out: SessionView[] = [];
+  const seen = new Set<string>();
+
+  for (let d = 0; d < 7; d++) {
+    const day = addDays(from, d);
+    const weekday = DAY_FROM_JS[day.getUTCDay()];
+    for (const b of blocks as { coach_id: string; location_id: string; weekday: string; start_time: string; end_time: string }[]) {
+      if (b.weekday !== weekday) continue;
+      for (const hour of hoursInRange(b.start_time, b.end_time)) {
+        const starts = slotStarts(day, hour);
+        const ends = slotEnds(starts);
+        const coachBusy = locked.find(
+          (s) => s.coach_id === b.coach_id && occupies(starts, ends, new Date(s.starts_at), new Date(s.ends_at)),
+        );
+        if (coachBusy) {
+          if (coachBusy.location_id === b.location_id && !seen.has(coachBusy.id)) {
+            seen.add(coachBusy.id);
+            out.push(coachBusy);
+          }
+          continue;
+        }
+        const freeCourt = courtsAt(b.location_id).some(
+          (c) => !locked.some((s) => s.court_id === c.id && occupies(starts, ends, new Date(s.starts_at), new Date(s.ends_at))),
+        );
+        if (!freeCourt) continue;
+        out.push({
+          id: openSlotId(b.location_id, b.coach_id, starts),
+          template_id: null,
+          offering_id: "",
+          offering_name: "Libre",
+          location_id: b.location_id,
+          location_name: locName.get(b.location_id) ?? b.location_id,
+          court_id: "",
+          court_name: "",
+          coach_id: b.coach_id,
+          coach_name: coachName.get(b.coach_id) ?? b.coach_id,
+          starts_at: starts.toISOString(),
+          ends_at: ends.toISOString(),
+          capacity: 4,
+          source: "availability",
+          cancelled: 0,
+          booked: 0,
+          pending: 0,
+          confirmed: 0,
+        });
+      }
+    }
+  }
+  for (const s of locked) {
+    if (!seen.has(s.id)) out.push(s);
+  }
+  out.sort((a, b) => a.starts_at.localeCompare(b.starts_at) || a.coach_name.localeCompare(b.coach_name));
+  return out;
+}
+
+async function firstFreeCourt(db: Db, academyId: string, locationId: string, startsAt: Date, endsAt: Date): Promise<string> {
+  const monday = mondayOf(startsAt);
+  const locked = occupyingOf(await weekSessions(db, academyId, monday));
+  const courts = await db`SELECT id FROM courts WHERE academy_id = ${academyId} AND location_id = ${locationId} ORDER BY number`;
+  for (const c of courts as { id: string }[]) {
+    const busy = locked.some((s) => s.court_id === c.id && occupies(startsAt, endsAt, new Date(s.starts_at), new Date(s.ends_at)));
+    if (!busy) return c.id;
+  }
+  throw new Error("No hay pista libre en esa sede");
+}
+
 export async function getSession(db: Db, academyId: string, id: string): Promise<SessionView | null> {
+  const open = parseOpenSlotId(id);
+  if (open) {
+    const [existing] = await db.unsafe(
+      `${SESSION_SELECT} WHERE s.academy_id = $1 AND s.coach_id = $2 AND s.location_id = $3 AND s.starts_at = $4 AND s.cancelled = false`,
+      [academyId, open.coachId, open.locationId, open.startsAt],
+    );
+    if (existing) return sessionFrom(existing as Record<string, unknown>);
+    const [coach] = await db`SELECT name FROM coaches WHERE id = ${open.coachId} AND academy_id = ${academyId}`;
+    const [loc] = await db`SELECT name FROM locations WHERE id = ${open.locationId} AND academy_id = ${academyId}`;
+    if (!coach || !loc) return null;
+    const ends = slotEnds(open.startsAt);
+    return {
+      id,
+      template_id: null,
+      offering_id: "",
+      offering_name: "Libre",
+      location_id: open.locationId,
+      location_name: String(loc.name),
+      court_id: "",
+      court_name: "",
+      coach_id: open.coachId,
+      coach_name: String(coach.name),
+      starts_at: open.startsAt.toISOString(),
+      ends_at: ends.toISOString(),
+      capacity: 4,
+      source: "availability",
+      cancelled: 0,
+      booked: 0,
+      pending: 0,
+      confirmed: 0,
+    };
+  }
   const rows = await db.unsafe(`${SESSION_SELECT} WHERE s.academy_id = $1 AND s.id = $2`, [academyId, id]);
   const row = rows[0];
   return row ? sessionFrom(row as Record<string, unknown>) : null;
@@ -480,10 +599,7 @@ export async function bookStudent(
   const existing = await db`SELECT status FROM bookings WHERE session_id = ${sessionId}`;
   const [already] = await db`SELECT id FROM bookings WHERE session_id = ${sessionId} AND student_id = ${studentId}`;
   if (already) throw new Error("Ese alumno ya está en la clase");
-  const status = nextBookingStatus(
-    num(session.capacity),
-    existing as { status: BookingStatus }[],
-  );
+  const status = nextBookingStatus(num(session.capacity), existing as { status: BookingStatus }[]);
   if (channel === "web" && status === "waitlisted") {
     throw new Error("Clase completa");
   }
@@ -530,17 +646,58 @@ export async function publicBook(
   sessionId: string,
   name: string,
   phone: string,
-  extra?: { category?: StudentCategory; side?: PlayingSide | null; clerkUserId?: string | null; cookieStudentId?: string | null },
-): Promise<{ status: BookingStatus; student: Student }> {
-  const [session] = await db`SELECT starts_at, cancelled FROM sessions WHERE id = ${sessionId} AND academy_id = ${academyId}`;
+  extra?: {
+    category?: StudentCategory;
+    side?: PlayingSide | null;
+    clerkUserId?: string | null;
+    cookieStudentId?: string | null;
+    offeringId?: string | null;
+  },
+): Promise<{ status: BookingStatus; student: Student; sessionId: string }> {
+  const open = parseOpenSlotId(sessionId);
+  let realId = sessionId;
+  if (open) {
+    const weekday = DAY_FROM_JS[open.startsAt.getUTCDay()];
+    const hour = open.startsAt.toISOString().slice(11, 16);
+    const covered = (await db`
+      SELECT start_time, end_time FROM coach_availability
+      WHERE academy_id = ${academyId} AND coach_id = ${open.coachId} AND location_id = ${open.locationId} AND weekday = ${weekday}
+    `) as { start_time: string; end_time: string }[];
+    if (!covered.some((b) => hoursInRange(b.start_time, b.end_time).includes(hour))) {
+      throw new Error("Ese horario no está en la planilla madre");
+    }
+    const existing = await getSession(db, academyId, sessionId);
+    if (existing && existing.source !== "availability") {
+      if (extra?.offeringId && extra.offeringId !== existing.offering_id) {
+        throw new Error(existing.offering_name === "Individual" ? "Esa hora ya es individual" : "Esa hora ya es grupal");
+      }
+      realId = existing.id;
+    } else {
+      const offeringId = extra?.offeringId ?? "";
+      const [off] = await db`SELECT id, capacity FROM offerings WHERE id = ${offeringId} AND academy_id = ${academyId}`;
+      if (!off || (num(off.capacity) !== 1 && num(off.capacity) !== 4)) {
+        throw new Error("Elegí individual o grupal");
+      }
+      const ends = slotEnds(open.startsAt);
+      const courtId = await firstFreeCourt(db, academyId, open.locationId, open.startsAt, ends);
+      realId = await createSession(db, academyId, {
+        offeringId,
+        courtId,
+        coachId: open.coachId,
+        startsAt: open.startsAt,
+        dayWindow: { from: mondayOf(open.startsAt), to: addDays(mondayOf(open.startsAt), 7) },
+      });
+    }
+  }
+  const [session] = await db`SELECT starts_at, cancelled FROM sessions WHERE id = ${realId} AND academy_id = ${academyId}`;
   if (!session || flag(session.cancelled)) throw new Error("Sesión inexistente o cancelada");
   const startsAt = new Date(iso(session.starts_at));
   if (startsAt < new Date()) throw new Error("Ese horario ya pasó");
   const ac = await academyById(db, academyId);
   if (!selfServeOpen(startsAt, ac.cutoff_hours)) throw new Error(cutoffMessage(ac.cutoff_hours));
   const student = await resolveBookerStudent(db, academyId, name, phone, extra);
-  const status = await bookStudent(db, academyId, sessionId, student.id, "web");
-  return { status, student };
+  const status = await bookStudent(db, academyId, realId, student.id, "web");
+  return { status, student, sessionId: realId };
 }
 
 export async function buyPack(

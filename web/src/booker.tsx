@@ -217,12 +217,17 @@ function BookerGrid({ slug }: { slug: string }) {
                       <button
                         key={s.id}
                         type="button"
-                        onClick={() => nav(`/reservar/${slug}/${s.id}`)}
+                        onClick={() => nav(`/reservar/${slug}/${encodeURIComponent(s.id)}`)}
                         className="rounded-md border border-stone-200 bg-white px-2 py-3 text-center text-sm hover:border-stone-900"
                       >
                         {formatTime(s.starts_at)}
                         {coachId === "" ? (
                           <span className="mt-0.5 block text-[10px] text-stone-500">{s.coach_name}</span>
+                        ) : null}
+                        {s.source !== "availability" && s.capacity > 1 ? (
+                          <span className="mt-0.5 block text-[10px] text-stone-500">
+                            {s.offering_name} {s.booked}/{s.capacity}
+                          </span>
                         ) : null}
                       </button>
                     ))}

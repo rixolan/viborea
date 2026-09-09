@@ -21,12 +21,16 @@ Tipo de clase reutilizable. Solo **individual** (`capacity` 1) y **grupal** (`ca
 _Avoid_: dual, class type como tres motores, product
 
 **Session**:
-Instancia concreta de un offering en un intervalo, con sede + court + entrenador. Existe aunque nadie reserve ni pague.
+Instancia concreta de un offering en un intervalo, con sede + court + entrenador. Existe aunque nadie reserve ni pague. Nace al primer booking sobre un hueco de availability.
 _Avoid_: class, booking, slot, reservation
 
 **Schedule rule**:
-Fila de la planilla madre: día de semana + hora + offering + court + entrenador.
+Fila de la planilla madre de *clases clavadas* (día + hora + offering + court + entrenador). En DG la madre actual es availability, no esto.
 _Avoid_: Calendly event type, recurrence (como producto)
+
+**Availability**:
+Presencia de un entrenador en una sede: día de semana + franja. Se explota a huecos de 60 min. No es una Session. El primer booking clava offering (individual cupo 1 o grupal cupo 4) y asigna pista libre.
+_Avoid_: template, slot (como identidad), package
 
 **Series**:
 Compromiso de un student a un solo día+hora (una schedule rule) por hasta N sessions (pack 5 o 10). Mar+jue son dos series. Materializa bookings en las ocurrencias con cupo; si alguna ya está llena, ese remaining queda suelto para auto-reserva. No es la planilla madre ni un slot infinito.

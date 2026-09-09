@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, NavLink, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { CreateOrganization, SignIn, SignUp, useAuth } from "@clerk/clerk-react";
-import { api, type Session, type SessionDetail, type Student } from "./api";
+import { api, type Offering, type Session, type SessionDetail, type Student } from "./api";
 import { RequireAcademia, RequireAuth } from "./auth";
 import { Badge, Button, Card, Input } from "./ui";
 import { Booker, coachPhoto } from "./booker";
@@ -198,9 +198,12 @@ function ReservarSesionForm({ getToken }: { getToken: () => Promise<string | nul
   const [waitlist, setWaitlist] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [me, setMe] = useState<Student | null>(null);
+  const [offerings, setOfferings] = useState<Offering[]>([]);
+  const [offeringId, setOfferingId] = useState("");
   useEffect(() => {
     if (!slug || !sessionId) return;
     api.bookerSession(slug, sessionId).then((r) => setSession(r.session)).catch((e) => setMsg(e.message));
+    api.bookerCatalog(slug).then((c) => setOfferings(c.offerings.filter((o) => o.capacity === 1 || o.capacity === 4))).catch(() => undefined);
     void (async () => {
       const token = (await getToken()) ?? undefined;
       const r = await api.bookerMe(slug, token).catch(() => null);
@@ -222,9 +225,18 @@ function ReservarSesionForm({ getToken }: { getToken: () => Promise<string | nul
         return;
       }
     }
+    const open = session?.source === "availability";
+    if (open && !offeringId) {
+      setMsg("Elegí individual o grupal");
+      return;
+    }
     try {
       const token = (await getToken()) ?? undefined;
-      const r = await api.book(slug, { sessionId, name, phone: me?.phone ?? parsePhone(phone) }, token);
+      const r = await api.book(
+        slug,
+        { sessionId, name, phone: me?.phone ?? parsePhone(phone), offeringId: open ? offeringId : undefined },
+        token,
+      );
       setWaitlist(r.status === "waitlisted");
       setWa(Boolean(r.whatsapp_ok && r.whatsapp !== "dry-run"));
       setDone(true);
@@ -234,13 +246,15 @@ function ReservarSesionForm({ getToken }: { getToken: () => Promise<string | nul
   }
   if (!session) return <p className="text-sm text-stone-500">{msg ?? "Cargando…"}</p>;
   const back = `/reservar/${slug}`;
+  const open = session.source === "availability";
+  const clase = open ? offerings.find((o) => o.id === offeringId)?.name ?? "Libre" : session.offering_name;
   const rows = [
     ["Día", formatDay(session.starts_at)],
     ["Hora", hhmm(session.starts_at)],
     ["Sede", session.location_name],
-    ["Cancha", session.court_name],
+    ["Cancha", session.court_name || "Se asigna al reservar"],
     ["Profe", session.coach_name],
-    ["Clase", session.offering_name],
+    ["Clase", clase],
   ];
   if (done) {
     rows.push(["A nombre de", name]);
@@ -282,11 +296,27 @@ function ReservarSesionForm({ getToken }: { getToken: () => Promise<string | nul
               {formatDay(session.starts_at)} · {hhmm(session.starts_at)}
             </p>
             <p className="mt-1 text-stone-600">
-              {session.location_name} · {session.court_name} · {session.coach_name}
+              {session.location_name}
+              {session.court_name ? ` · ${session.court_name}` : ""} · {session.coach_name}
             </p>
-            <p className="mt-1 text-stone-500">{session.offering_name}</p>
           </div>
           <form className="space-y-3" onSubmit={onSubmit}>
+            {open ? (
+              <div className="flex gap-2">
+                {offerings.map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => setOfferingId(o.id)}
+                    className={`flex-1 rounded-md border px-3 py-2 text-sm ${offeringId === o.id ? "border-stone-900 bg-stone-900 text-white" : "border-stone-200"}`}
+                  >
+                    {o.name}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-stone-500">{session.offering_name}</p>
+            )}
             {me ? (
               <p className="text-sm text-stone-600">
                 {me.name} · {me.phone}

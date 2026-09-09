@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { activePack, openDb } from "./db";
 import { pilotoReserva } from "./piloto";
-import { seedIfEmpty } from "./seed";
+import { alignCatalog, seedIfEmpty } from "./seed";
 
 const url = process.env.DATABASE_URL;
 
@@ -9,6 +9,7 @@ describe.skipIf(!url)("piloto reserva + pack", () => {
   it("compra pack de 10, confirma y deja 9", async () => {
     const db = await openDb(url);
     await seedIfEmpty(db);
+    await alignCatalog(db);
     const phone = `+595981${Date.now().toString().slice(-6)}`;
     const result = await pilotoReserva(db, {
       name: "Ana Piloto",

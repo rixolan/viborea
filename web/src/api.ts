@@ -1,5 +1,6 @@
 export type Session = {
   id: string;
+  offering_id?: string;
   offering_name: string;
   location_id: string;
   location_name: string;
@@ -13,6 +14,7 @@ export type Session = {
   pending: number;
   confirmed: number;
   cancelled: number;
+  source?: string;
 };
 
 export type Location = {
@@ -99,7 +101,8 @@ export const api = {
     ),
   bookerWeek: (slug: string, monday: string) =>
     req<{ sessions: Session[]; name: string }>(`/api/a/${slug}/week?monday=${monday}`),
-  bookerSession: (slug: string, id: string) => req<{ session: Session }>(`/api/a/${slug}/sessions/${id}`),
+  bookerSession: (slug: string, id: string) =>
+    req<{ session: Session }>(`/api/a/${slug}/sessions/${encodeURIComponent(id)}`),
   bookerMe: (slug: string, token?: string) =>
     req<{ student: Student | null; bookings: HistoryBooking[] }>(`/api/a/${slug}/me`, { headers: auth(token) }),
   catalog: (token?: string) =>
@@ -124,7 +127,7 @@ export const api = {
   ) => req<{ id: string }>("/api/templates", { method: "POST", body: JSON.stringify(input), headers: auth(token) }),
   deleteTemplate: (id: string, token?: string) =>
     req<{ ok: boolean }>(`/api/templates/${id}`, { method: "DELETE", headers: auth(token) }),
-  book: (slug: string, input: { sessionId: string; name: string; phone: string }, token?: string) =>
+  book: (slug: string, input: { sessionId: string; name: string; phone: string; offeringId?: string }, token?: string) =>
     req<{ status: string; message?: string; whatsapp?: string; whatsapp_ok?: boolean }>(`/api/a/${slug}/book`, {
       method: "POST",
       body: JSON.stringify(input),

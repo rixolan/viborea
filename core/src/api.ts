@@ -8,17 +8,20 @@ import {
   deleteTemplate,
   ensureWeek,
   getSession,
-  identifyPlayer,
   listTemplates,
   mondayOf,
   publicBook,
   selfServeCancel,
   sessionBookings,
   setBookingStatus,
+  studentByClerk,
+  studentById,
   studentHistory,
   updateCutoffHours,
+  weekGrid,
   weekSessions,
   type Academy,
+  type Student,
 } from "./db";
 import { parseCategory, parseSide } from "./domain/student";
 import { CutoffError } from "./domain/cutoff";
@@ -91,7 +94,7 @@ async function handleBooker(req: Request, db: Db, url: URL, ac: Academy, rest: s
     const raw = url.searchParams.get("monday");
     const monday = mondayOf(raw ? new Date(`${raw}T00:00:00.000Z`) : new Date());
     await ensureWeek(db, ac.id, monday);
-    const sessions = await weekSessions(db, ac.id, monday);
+    const sessions = await weekGrid(db, ac.id, monday);
     return json({ monday: monday.toISOString().slice(0, 10), sessions, name: ac.name, slug: ac.slug });
   }
 
@@ -119,6 +122,7 @@ async function handleBooker(req: Request, db: Db, url: URL, ac: Academy, rest: s
       phone?: string;
       category?: string;
       side?: string;
+      offeringId?: string;
     };
     try {
       const clerk = await readClerk(req);
@@ -130,6 +134,7 @@ async function handleBooker(req: Request, db: Db, url: URL, ac: Academy, rest: s
         side: parseSide(body.side),
         clerkUserId: clerk?.userId ?? null,
         cookieStudentId: clerk?.userId ? null : cookieStudentId,
+        offeringId: body.offeringId ?? null,
       });
       const session = await getSession(db, ac.id, sessionId);
       const when = session ? new Date(session.starts_at).toISOString().slice(11, 16) : "";
