@@ -31,6 +31,7 @@ services:
       CLERK_SECRET_KEY: ${NUXT_CLERK_SECRET_KEY:-${CLERK_SECRET_KEY:-}}
       WHATSAPP_TEST_TOKEN: ${WHATSAPP_TEST_TOKEN:-}
       WHATSAPP_TEST_PHONE_NUMBER_ID: ${WHATSAPP_TEST_PHONE_NUMBER_ID:-}
+      APP_URL: ${APP_URL:-https://viborea.com}
     depends_on:
       db:
         condition: service_healthy

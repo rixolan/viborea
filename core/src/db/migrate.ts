@@ -64,6 +64,9 @@ export async function migrate(db: Db): Promise<void> {
     await db`DROP VIEW IF EXISTS metabase_disponibilidad_profe`;
     await db`DROP VIEW IF EXISTS slot_hours`;
   });
+  await apply(db, "010_booking_reminded", async () => {
+    await db`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminded_at TIMESTAMPTZ`;
+  });
 }
 
 async function apply(db: Db, id: string, run: () => Promise<void>): Promise<void> {

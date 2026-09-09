@@ -9,9 +9,11 @@ import {
   ensureWeek,
   getSession,
   listTemplates,
+  manageBooking,
   mondayOf,
   publicBook,
   selfServeCancel,
+  selfServeReschedule,
   sessionBookings,
   setBookingStatus,
   studentByClerk,
@@ -29,6 +31,7 @@ import type { BookingStatus, DayOfWeek } from "./domain/types";
 import { readClerk, requireAcademy } from "./auth";
 import { configFromEnv as whatsappConfig, notifyReservation } from "./notify/whatsapp";
 import { clearPlayerCookieHeader, cookieName, decodePlayerCookie, readCookie, setPlayerCookieHeader } from "./player-cookie";
+import { decodeManageToken, manageUrl } from "./manage-link";
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
   return Response.json(data, { status, headers });
@@ -130,7 +133,7 @@ async function handleBooker(req: Request, db: Db, url: URL, ac: Academy, rest: s
       const raw = readCookie(req.headers.get("cookie"), cookieName(ac.slug));
       const cookieStudentId = decodePlayerCookie(ac.id, raw);
       const sessionId = body.sessionId ?? "";
-      const { status, student } = await publicBook(db, ac.id, sessionId, body.name ?? "", body.phone ?? "", {
+      const { status, student, bookingId } = await publicBook(db, ac.id, sessionId, body.name ?? "", body.phone ?? "", {
         category: parseCategory(body.category),
         side: parseSide(body.side),
         clerkUserId: clerk?.userId ?? null,
@@ -139,20 +142,65 @@ async function handleBooker(req: Request, db: Db, url: URL, ac: Academy, rest: s
       });
       const session = await getSession(db, ac.id, sessionId);
       const when = session ? new Date(session.starts_at).toISOString().slice(11, 16) : "";
+      const link = bookingId ? manageUrl(ac.slug, ac.id, bookingId) : "";
       const text = session
-        ? `Viborea: ${session.offering_name} ${when} · ${session.location_name} · ${session.court_name} · ${session.coach_name}. Reserva ${status}.`
-        : `Viborea: reserva ${status}.`;
+        ? `Viborea: ${session.offering_name} ${when} · ${session.location_name} · ${session.coach_name}. Reserva ${status}.${link ? ` Gestioná: ${link}` : ""}`
+        : `Viborea: reserva ${status}.${link ? ` Gestioná: ${link}` : ""}`;
       const sent = await notifyReservation(whatsappConfig(), student.phone, text);
       const base = status === "waitlisted" ? "Lista de espera." : "Reserva anotada. Pendiente de pago.";
       const wa = sent.ok && sent.channel !== "dry-run" ? " Te escribimos por WhatsApp." : "";
       return json(
-        { status, message: base + wa, whatsapp: sent.channel, whatsapp_ok: sent.ok },
+        { status, message: base + wa, whatsapp: sent.channel, whatsapp_ok: sent.ok, manage_url: link || undefined },
         200,
         { "Set-Cookie": setPlayerCookieHeader(ac.slug, ac.id, student.id) },
       );
     } catch (err) {
       const code = err instanceof ClaimedFichaError ? 409 : 400;
       return json({ error: err instanceof Error ? err.message : "Error" }, code);
+    }
+  }
+
+  const manageGet = rest.match(/^manage\/([^/]+)$/);
+  if (req.method === "GET" && manageGet) {
+    const bookingId = decodeManageToken(ac.id, decodeURIComponent(manageGet[1]));
+    if (!bookingId) return json({ error: "Enlace inválido" }, 404);
+    const booking = await manageBooking(db, ac.id, bookingId);
+    if (!booking) return json({ error: "Reserva inexistente" }, 404);
+    const monday = mondayOf(new Date(booking.starts_at));
+    const alternatives = booking.can_change
+      ? (await weekGrid(db, ac.id, monday)).filter(
+          (s) => s.id !== booking.session_id && s.cancelled === 0 && s.booked < s.capacity,
+        )
+      : [];
+    return json({ booking, alternatives });
+  }
+
+  const manageCancel = rest.match(/^manage\/([^/]+)\/cancel$/);
+  if (req.method === "POST" && manageCancel) {
+    const bookingId = decodeManageToken(ac.id, decodeURIComponent(manageCancel[1]));
+    if (!bookingId) return json({ error: "Enlace inválido" }, 404);
+    const booking = await manageBooking(db, ac.id, bookingId);
+    if (!booking) return json({ error: "Reserva inexistente" }, 404);
+    try {
+      await selfServeCancel(db, ac.id, bookingId, booking.student_id);
+      return json({ message: "Reserva cancelada." });
+    } catch (err) {
+      return json({ error: err instanceof Error ? err.message : "Error" }, 400);
+    }
+  }
+
+  const manageMove = rest.match(/^manage\/([^/]+)\/reschedule$/);
+  if (req.method === "POST" && manageMove) {
+    const bookingId = decodeManageToken(ac.id, decodeURIComponent(manageMove[1]));
+    if (!bookingId) return json({ error: "Enlace inválido" }, 404);
+    const booking = await manageBooking(db, ac.id, bookingId);
+    if (!booking) return json({ error: "Reserva inexistente" }, 404);
+    const body = (await req.json()) as { sessionId?: string; offeringId?: string };
+    try {
+      const moved = await selfServeReschedule(db, ac.id, bookingId, booking.student_id, body.sessionId ?? "", body.offeringId);
+      return json({ message: "Reprogramada.", sessionId: moved.sessionId, status: moved.status });
+    } catch (err) {
+      return json({ error: err instanceof Error ? err.message : "Error" }, 400);
     }
   }
 

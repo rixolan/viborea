@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, NavLink, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { CreateOrganization, SignIn, SignUp, useAuth } from "@clerk/clerk-react";
-import { api, type Offering, type Session, type SessionDetail, type Student } from "./api";
+import { api, type HistoryBooking, type Offering, type Session, type SessionDetail, type Student } from "./api";
 import { RequireAcademia, RequireAuth } from "./auth";
 import { Badge, Button, Card, Input } from "./ui";
 import { Booker, coachPhoto } from "./booker";
@@ -166,6 +166,96 @@ export function ReservarClases() {
   const { slug } = useParams();
   if (!slug) return <ReservarIndex />;
   return <Booker slug={slug} view="clases" />;
+}
+
+export function ReservarTurno() {
+  const { slug, token } = useParams();
+  const [booking, setBooking] = useState<(HistoryBooking & { can_change: boolean; offering_id?: string }) | null>(null);
+  const [alts, setAlts] = useState<Session[]>([]);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  async function load() {
+    if (!slug || !token) return;
+    const r = await api.manage(slug, token);
+    setBooking(r.booking);
+    setAlts(r.alternatives);
+  }
+  useEffect(() => {
+    void load().catch((e) => setErr(e instanceof Error ? e.message : "Error"));
+  }, [slug, token]);
+  if (err) return <p className="text-sm text-red-700">{err}</p>;
+  if (!booking || !slug || !token) return <p className="text-sm text-stone-500">Cargando…</p>;
+  return (
+    <div className="mx-auto max-w-lg space-y-4">
+      <h1 className="text-xl font-semibold">Tu clase</h1>
+      <Card className="space-y-1 p-4">
+        <p className="font-medium">{formatDay(booking.starts_at)} {hhmm(new Date(booking.starts_at))}</p>
+        <p className="text-sm text-stone-600">
+          {booking.offering_name} · {booking.coach_name} · {booking.location_name} · {booking.court_name}
+        </p>
+        <p className="text-xs text-stone-400">{booking.status}</p>
+      </Card>
+      {msg ? <p className="text-sm text-teal-800">{msg}</p> : null}
+      {booking.can_change ? (
+        <div className="space-y-3">
+          <Button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                try {
+                  const r = await api.manageCancel(slug, token);
+                  setMsg(r.message);
+                  await load();
+                } catch (e) {
+                  setErr(e instanceof Error ? e.message : "Error");
+                }
+              })();
+            }}
+          >
+            Cancelar
+          </Button>
+          {alts.length ? (
+            <div>
+              <p className="text-sm font-medium">Reprogramar</p>
+              <ul className="mt-2 divide-y rounded-md border">
+                {alts.slice(0, 12).map((s) => (
+                  <li key={s.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                    <span>
+                      {formatDay(s.starts_at)} {hhmm(new Date(s.starts_at))} · {s.coach_name} · {s.location_name}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-xs underline"
+                      onClick={() => {
+                        void (async () => {
+                          try {
+                            const r = await api.manageReschedule(slug, token, s.id, s.offering_id || booking.offering_id);
+                            setMsg(r.message);
+                            await load();
+                          } catch (e) {
+                            setErr(e instanceof Error ? e.message : "Error");
+                          }
+                        })();
+                      }}
+                    >
+                      Elegir
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-sm text-stone-500">No hay otro hueco esta semana.</p>
+          )}
+        </div>
+      ) : (
+        <p className="text-sm text-stone-600">Fuera de plazo: no se puede cancelar ni reprogramar desde acá.</p>
+      )}
+      <Link to={`/reservar/${slug}`} className="text-sm underline">
+        Ver la grilla
+      </Link>
+    </div>
+  );
 }
 
 function formatDay(iso: string) {
@@ -681,7 +771,7 @@ export function AcademiaProfes() {
               onClick={() => setCoachId(c.id)}
               className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm ${coachId === c.id ? "border-stone-900 bg-stone-900 text-white" : "border-stone-200 bg-white"}`}
             >
-              <img src={coachPhoto(c.id)} alt="" className="h-7 w-7 rounded-full bg-stone-200" />
+              <img src={coachPhoto(c.id)} alt="" className="h-7 w-7 rounded-full bg-stone-200 object-cover" />
               {c.name}
             </button>
           ))}

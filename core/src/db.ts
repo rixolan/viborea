@@ -110,6 +110,24 @@ export type PlayerBooking = {
   court_name: string;
 };
 
+export type ReminderDue = {
+  id: string;
+  academy_id: string;
+  slug: string;
+  phone: string;
+  starts_at: string;
+  offering_name: string;
+  coach_name: string;
+  location_name: string;
+  cutoff_hours: number;
+};
+
+export type ManageBooking = PlayerBooking & {
+  student_id: string;
+  offering_id: string;
+  can_change: boolean;
+};
+
 function iso(v: unknown): string {
   return v instanceof Date ? v.toISOString() : String(v);
 }
@@ -665,7 +683,7 @@ export async function publicBook(
     cookieStudentId?: string | null;
     offeringId?: string | null;
   },
-): Promise<{ status: BookingStatus; student: Student; sessionId: string }> {
+): Promise<{ status: BookingStatus; student: Student; sessionId: string; bookingId: string }> {
   const open = parseOpenSlotId(sessionId);
   let realId = sessionId;
   if (open) {
@@ -709,7 +727,8 @@ export async function publicBook(
   if (!selfServeOpen(startsAt, ac.cutoff_hours)) throw new Error(cutoffMessage(ac.cutoff_hours));
   const student = await resolveBookerStudent(db, academyId, name, phone, extra);
   const status = await bookStudent(db, academyId, realId, student.id, "web");
-  return { status, student, sessionId: realId };
+  const [row] = await db`SELECT id FROM bookings WHERE session_id = ${realId} AND student_id = ${student.id}`;
+  return { status, student, sessionId: realId, bookingId: String(row?.id ?? "") };
 }
 
 export async function buyPack(
@@ -835,6 +854,99 @@ export async function selfServeCancel(db: Db, academyId: string, bookingId: stri
   `;
   if (!booking) throw new Error("Reserva inexistente");
   await applyCancel(db, academyId, booking, true);
+}
+
+export async function dueReminders(db: Db, now = new Date()): Promise<ReminderDue[]> {
+  const until = new Date(now.getTime() + 24 * 3_600_000);
+  const rows = await db`
+    SELECT b.id, a.id AS academy_id, a.slug, a.cutoff_hours, st.phone, s.starts_at,
+      o.name AS offering_name, ch.name AS coach_name, l.name AS location_name
+    FROM bookings b
+    JOIN sessions s ON s.id = b.session_id
+    JOIN students st ON st.id = b.student_id
+    JOIN academy a ON a.id = s.academy_id
+    JOIN offerings o ON o.id = s.offering_id
+    JOIN coaches ch ON ch.id = s.coach_id
+    JOIN locations l ON l.id = s.location_id
+    WHERE b.reminded_at IS NULL
+      AND b.status IN ('pending_payment', 'confirmed', 'checked_in')
+      AND s.cancelled = false
+      AND s.starts_at > ${now}
+      AND s.starts_at <= ${until}
+  `;
+  return rows.map((row) => ({
+    id: String(row.id),
+    academy_id: String(row.academy_id),
+    slug: String(row.slug),
+    phone: String(row.phone),
+    starts_at: iso(row.starts_at),
+    offering_name: String(row.offering_name),
+    coach_name: String(row.coach_name),
+    location_name: String(row.location_name),
+    cutoff_hours: Number(row.cutoff_hours) || 12,
+  }));
+}
+
+export async function markReminded(db: Db, bookingId: string): Promise<boolean> {
+  const rows = await db`
+    UPDATE bookings SET reminded_at = now() WHERE id = ${bookingId} AND reminded_at IS NULL
+    RETURNING id
+  `;
+  return rows.length > 0;
+}
+
+export async function manageBooking(db: Db, academyId: string, bookingId: string): Promise<ManageBooking | null> {
+  const [row] = await db`
+    SELECT b.id, b.session_id, b.student_id, b.status, s.starts_at, s.ends_at, s.offering_id,
+      o.name AS offering_name, ch.name AS coach_name, l.name AS location_name, c.name AS court_name
+    FROM bookings b
+    JOIN sessions s ON s.id = b.session_id
+    JOIN offerings o ON o.id = s.offering_id
+    JOIN coaches ch ON ch.id = s.coach_id
+    JOIN locations l ON l.id = s.location_id
+    JOIN courts c ON c.id = s.court_id
+    WHERE b.id = ${bookingId} AND s.academy_id = ${academyId}
+  `;
+  if (!row) return null;
+  const ac = await academyById(db, academyId);
+  const starts = new Date(iso(row.starts_at));
+  return {
+    id: String(row.id),
+    session_id: String(row.session_id),
+    student_id: String(row.student_id),
+    status: row.status as BookingStatus,
+    starts_at: iso(row.starts_at),
+    ends_at: iso(row.ends_at),
+    offering_name: String(row.offering_name),
+    offering_id: String(row.offering_id),
+    coach_name: String(row.coach_name),
+    location_name: String(row.location_name),
+    court_name: String(row.court_name),
+    can_change: row.status !== "cancelled" && selfServeOpen(starts, ac.cutoff_hours),
+  };
+}
+
+export async function selfServeReschedule(
+  db: Db,
+  academyId: string,
+  bookingId: string,
+  studentId: string,
+  newSessionId: string,
+  offeringId?: string | null,
+): Promise<{ status: BookingStatus; sessionId: string }> {
+  const current = await manageBooking(db, academyId, bookingId);
+  if (!current || current.student_id !== studentId) throw new Error("Reserva inexistente");
+  if (!current.can_change) throw new Error(cutoffMessage((await academyById(db, academyId)).cutoff_hours));
+  if (current.session_id === newSessionId) return { status: current.status, sessionId: current.session_id };
+  const student = await studentById(db, academyId, studentId);
+  if (!student) throw new Error("Alumno inexistente");
+  const booked = await publicBook(db, academyId, newSessionId, student.name, student.phone, {
+    cookieStudentId: student.id,
+    clerkUserId: student.clerk_user_id,
+    offeringId: offeringId ?? null,
+  });
+  await selfServeCancel(db, academyId, bookingId, studentId);
+  return { status: booked.status, sessionId: booked.sessionId };
 }
 
 async function applyCancel(

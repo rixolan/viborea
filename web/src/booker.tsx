@@ -7,7 +7,18 @@ import { cn } from "./ui";
 const DOW = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"];
 const MONTH_SHORT = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
+const COACH_PHOTOS = new Set([
+  "coach-jose-mongelos",
+  "coach-mathias-fernandez",
+  "coach-pablo-recalde",
+  "coach-rodolfo-silva",
+  "coach-rodrigo-avila",
+  "coach-sergio-gonzalez",
+  "coach-viani-alfonzo",
+]);
+
 export function coachPhoto(id: string) {
+  if (COACH_PHOTOS.has(id)) return `/coaches/${id}.webp`;
   return `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(id)}&backgroundColor=e7e5e4`;
 }
 

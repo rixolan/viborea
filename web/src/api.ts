@@ -128,10 +128,22 @@ export const api = {
   deleteTemplate: (id: string, token?: string) =>
     req<{ ok: boolean }>(`/api/templates/${id}`, { method: "DELETE", headers: auth(token) }),
   book: (slug: string, input: { sessionId: string; name: string; phone: string; offeringId?: string }, token?: string) =>
-    req<{ status: string; message?: string; whatsapp?: string; whatsapp_ok?: boolean }>(`/api/a/${slug}/book`, {
+    req<{ status: string; message?: string; whatsapp?: string; whatsapp_ok?: boolean; manage_url?: string }>(`/api/a/${slug}/book`, {
       method: "POST",
       body: JSON.stringify(input),
       headers: auth(token),
+    }),
+  manage: (slug: string, token: string) =>
+    req<{
+      booking: HistoryBooking & { student_id: string; can_change: boolean };
+      alternatives: Session[];
+    }>(`/api/a/${slug}/manage/${encodeURIComponent(token)}`),
+  manageCancel: (slug: string, token: string) =>
+    req<{ message: string }>(`/api/a/${slug}/manage/${encodeURIComponent(token)}/cancel`, { method: "POST", body: "{}" }),
+  manageReschedule: (slug: string, token: string, sessionId: string, offeringId?: string) =>
+    req<{ message: string; sessionId: string }>(`/api/a/${slug}/manage/${encodeURIComponent(token)}/reschedule`, {
+      method: "POST",
+      body: JSON.stringify({ sessionId, offeringId }),
     }),
   setStatus: (bookingId: string, status: string, token?: string) =>
     req<{ message: string }>(`/api/bookings/${bookingId}/status`, {

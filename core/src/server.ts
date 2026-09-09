@@ -7,8 +7,10 @@ import {
   cancelSession,
   catalogs,
   createSession,
+  dueReminders,
   ensureWeek,
   getSession,
+  markReminded,
   mondayOf,
   openDb,
   sessionBookings,
@@ -35,6 +37,7 @@ import type { BookingStatus } from "./domain/types";
 import { parseCategory, parseSide } from "./domain/student";
 import { TpagoClient, configFromEnv, handleTpagoHook } from "./payments/tpago";
 import { configFromEnv as whatsappConfig, notifyReservation } from "./notify/whatsapp";
+import { manageUrl } from "./manage-link";
 import { pilotoReserva } from "./piloto";
 import type { PackAlert } from "./domain/pack";
 import { handleApi } from "./api";
@@ -379,3 +382,20 @@ Bun.serve({
 });
 
 console.log(`Viborea http://localhost:${PORT}`);
+
+async function tickReminders() {
+  try {
+    const due = await dueReminders(db);
+    for (const row of due) {
+      const link = manageUrl(row.slug, row.academy_id, row.id);
+      const when = new Date(row.starts_at).toISOString().slice(11, 16);
+      const text = `Viborea: mañana ${row.offering_name} ${when} con ${row.coach_name} en ${row.location_name}. Cancelá o reprogramá (hasta ${row.cutoff_hours} h antes): ${link}`;
+      const sent = await notifyReservation(wa, row.phone, text);
+      if (sent.ok) await markReminded(db, row.id);
+    }
+  } catch (err) {
+    console.error("reminders", err);
+  }
+}
+setInterval(() => void tickReminders(), 60_000);
+void tickReminders();

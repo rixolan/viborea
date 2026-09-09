@@ -13,6 +13,7 @@ import {
   ReservarClases,
   ReservarIndex,
   ReservarSesion,
+  ReservarTurno,
 } from "./pages";
 
 function RedirectAcademiaSesion() {
@@ -30,6 +31,7 @@ const router = createBrowserRouter([
       { path: "/reservar", element: <ReservarIndex /> },
       { path: "/reservar/:slug", element: <Reservar /> },
       { path: "/reservar/:slug/clases", element: <ReservarClases /> },
+      { path: "/reservar/:slug/turno/:token", element: <ReservarTurno /> },
       { path: "/reservar/:slug/:sessionId", element: <ReservarSesion /> },
       { path: "/jugador", element: <Navigate to="/" replace /> },
       { path: "/academia", element: <Academia /> },

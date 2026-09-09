@@ -101,6 +101,7 @@ CREATE TABLE bookings (
   status TEXT NOT NULL,
   channel TEXT NOT NULL DEFAULT 'admin',
   pack_id TEXT REFERENCES packs(id),
+  reminded_at TIMESTAMPTZ,
   UNIQUE (session_id, student_id)
 );
 
