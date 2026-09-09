@@ -57,7 +57,10 @@ export const api = {
       headers: token ? { authorization: `Bearer ${token}` } : {},
     }),
   book: (input: { sessionId: string; name: string; phone: string; category?: string; side?: string }) =>
-    req<{ status: string; message?: string }>("/api/book", { method: "POST", body: JSON.stringify(input) }),
+    req<{ status: string; message?: string; whatsapp?: string; whatsapp_ok?: boolean }>("/api/book", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   setStatus: (bookingId: string, status: string, token?: string) =>
     req<{ message: string }>(`/api/bookings/${bookingId}/status`, {
       method: "POST",

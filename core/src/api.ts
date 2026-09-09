@@ -16,6 +16,7 @@ import { parseCategory, parseSide } from "./domain/student";
 import { CutoffError } from "./domain/cutoff";
 import type { BookingStatus } from "./domain/types";
 import { requireAcademy } from "./auth";
+import { configFromEnv as whatsappConfig, notifyReservation } from "./notify/whatsapp";
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status });
@@ -77,11 +78,26 @@ export async function handleApi(req: Request, db: Db): Promise<Response | null> 
       side?: string;
     };
     try {
-      const status = await publicBook(db, body.sessionId ?? "", body.name ?? "", body.phone ?? "", {
+      const sessionId = body.sessionId ?? "";
+      const status = await publicBook(db, sessionId, body.name ?? "", body.phone ?? "", {
         category: parseCategory(body.category),
         side: parseSide(body.side),
       });
-      return json({ status, message: status === "waitlisted" ? "Lista de espera." : "Reserva pendiente de pago." });
+      const session = await getSession(db, sessionId);
+      const when = session ? new Date(session.starts_at).toISOString().slice(11, 16) : "";
+      const text = session
+        ? `Viborea: ${session.offering_name} ${when} · ${session.location_name} · ${session.court_name} · ${session.coach_name}. Reserva ${status}.`
+        : `Viborea: reserva ${status}.`;
+      const sent = await notifyReservation(whatsappConfig(), body.phone ?? "", text);
+      const wa =
+        sent.channel === "dry-run"
+          ? "WhatsApp simulado (faltan WHATSAPP_TEST_*)."
+          : sent.ok
+            ? "WhatsApp enviado."
+            : `WhatsApp no salió: ${sent.error ?? "error"}`;
+      const message =
+        status === "waitlisted" ? `Lista de espera. ${wa}` : `Reserva pendiente de pago. ${wa}`;
+      return json({ status, message, whatsapp: sent.channel, whatsapp_ok: sent.ok });
     } catch (err) {
       return json({ error: err instanceof Error ? err.message : "Error" }, 400);
     }

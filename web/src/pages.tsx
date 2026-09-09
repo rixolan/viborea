@@ -4,16 +4,13 @@ import { CreateOrganization, SignUp, useAuth, useSignIn } from "@clerk/clerk-rea
 import { api, type Session, type SessionDetail } from "./api";
 import { RequireAcademia, RequireAuth } from "./auth";
 import { Badge, Button, Card, Input } from "./ui";
+import { WeekGrid, hhmm } from "./week-grid";
 
 function mondayISO(d = new Date()) {
   const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const day = x.getUTCDay() || 7;
   x.setUTCDate(x.getUTCDate() - day + 1);
   return x.toISOString().slice(0, 10);
-}
-
-function hhmm(iso: string) {
-  return new Date(iso).toISOString().slice(11, 16);
 }
 
 export function Landing() {
@@ -78,7 +75,18 @@ function EntrarForm() {
     if (!signIn || !setActive) return;
     setMsg(null);
     try {
-      const res = await signIn.create({ identifier: email, password });
+      const created = await signIn.create({ identifier: email });
+      if (created.status === "complete" && created.createdSessionId) {
+        await setActive({ session: created.createdSessionId });
+        nav("/academia");
+        return;
+      }
+      const passwordFactor = created.supportedFirstFactors?.find((f) => f.strategy === "password");
+      if (!passwordFactor) {
+        setMsg("Clerk no tiene contraseña como primer factor. Activala en el dashboard.");
+        return;
+      }
+      const res = await signIn.attemptFirstFactor({ strategy: "password", password });
       if (res.status === "complete" && res.createdSessionId) {
         await setActive({ session: res.createdSessionId });
         nav("/academia");
@@ -86,7 +94,7 @@ function EntrarForm() {
       }
       setMsg(
         res.status === "needs_second_factor"
-          ? "Esta cuenta tiene segundo factor. Desactivalo en Clerk."
+          ? "Clerk pide un segundo factor. Dashboard → User & authentication → Multi-factor: off."
           : `No se pudo entrar (${res.status}).`,
       );
     } catch (err) {
@@ -164,59 +172,41 @@ function WeekNav({ monday, onMonday }: { monday: string; onMonday: (v: string) =
   );
 }
 
-function SessionList({
-  sessions,
-  action,
-}: {
-  sessions: Session[];
-  action: (s: Session) => ReactNode;
-}) {
-  if (sessions.length === 0) return <p className="text-sm text-stone-500">No hay clases esta semana.</p>;
-  return (
-    <div className="grid gap-3">
-      {sessions.map((s) => (
-        <Card key={s.id} className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="font-medium">
-              {hhmm(s.starts_at)} · {s.offering_name}
-            </p>
-            <p className="text-sm text-stone-600">
-              {s.location_name} · {s.court_name} · {s.coach_name}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge tone={s.pending ? "amber" : s.confirmed ? "teal" : "stone"}>
-              {s.booked}/{s.capacity}
-            </Badge>
-            {action(s)}
-          </div>
-        </Card>
-      ))}
-    </div>
-  );
-}
 
 export function Reservar() {
   const [monday, setMonday] = useState(mondayISO());
   const [locationId, setLocationId] = useState("");
+  const [coachId, setCoachId] = useState("");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
+  const [coaches, setCoaches] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    api.catalog().then((c) => setLocations(c.locations)).catch((e) => setError(e.message));
+    api
+      .catalog()
+      .then((c) => {
+        setLocations(c.locations);
+        setCoaches(c.coaches);
+        if (c.locations[0] && !locationId) setLocationId(c.locations[0].id);
+      })
+      .catch((e: Error) => setError(e.message));
   }, []);
   useEffect(() => {
-    api.week(monday).then((r) => setSessions(r.sessions.filter((s) => !s.cancelled))).catch((e) => setError(e.message));
+    api
+      .week(monday)
+      .then((r) => setSessions(r.sessions.filter((s) => !s.cancelled)))
+      .catch((e: Error) => setError(e.message));
   }, [monday]);
   const shown = useMemo(
-    () => (locationId ? sessions.filter((s) => s.location_id === locationId) : sessions),
-    [sessions, locationId],
+    () =>
+      sessions.filter((s) => (!locationId || s.location_id === locationId) && (!coachId || s.coach_id === coachId)),
+    [sessions, locationId, coachId],
   );
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Reservar</h1>
-        <p className="mt-1 text-sm text-stone-600">Elegí sede y un horario con cupo.</p>
+        <p className="mt-1 text-sm text-stone-600">Sede, profe y un hueco en la semana.</p>
       </div>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <div className="flex flex-wrap gap-3">
@@ -226,21 +216,33 @@ export function Reservar() {
           value={locationId}
           onChange={(e) => setLocationId(e.target.value)}
         >
-          <option value="">Todas las sedes</option>
           {locations.map((l) => (
             <option key={l.id} value={l.id}>
               {l.name}
             </option>
           ))}
         </select>
+        <select
+          className="h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm"
+          value={coachId}
+          onChange={(e) => setCoachId(e.target.value)}
+        >
+          <option value="">Todos los profes</option>
+          {coaches.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
       </div>
-      <SessionList
+      <WeekGrid
+        monday={monday}
         sessions={shown}
         action={(s) =>
           s.booked >= s.capacity ? (
             <Badge>Completa</Badge>
           ) : (
-            <Link to={`/reservar/${s.id}`} className="text-sm font-medium underline">
+            <Link to={`/reservar/${s.id}`} className="font-medium underline">
               Reservar
             </Link>
           )
@@ -368,7 +370,8 @@ export function Academia() {
             ))}
           </select>
         </div>
-        <SessionList
+        <WeekGrid
+          monday={monday}
           sessions={shown}
           action={(s) => (
             <Link to={`/academia/sesion/${s.id}`} className="text-sm underline">
