@@ -7,3 +7,15 @@
 html {
   font-family: var(--font-sans);
 }
+
+.phone-field {
+  --react-international-phone-height: 40px;
+  --react-international-phone-border-radius: 6px;
+  --react-international-phone-border-color: #d6d3d1;
+  --react-international-phone-background-color: #fff;
+  width: 100%;
+}
+
+.phone-field .react-international-phone-input {
+  width: 100%;
+}

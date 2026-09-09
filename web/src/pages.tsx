@@ -6,6 +6,7 @@ import { RequireAcademia, RequireAuth } from "./auth";
 import { Badge, Button, Card, Input } from "./ui";
 import { Booker, coachPhoto } from "./booker";
 import { WeekGrid, hhmm } from "./week-grid";
+import { PhoneField } from "./phone-field";
 
 function mondayISO(d = new Date()) {
   const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -222,7 +223,9 @@ export function ReservarSesion() {
           </label>
           <label className="block text-sm">
             Teléfono
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} required placeholder="+595981..." />
+            <div className="mt-1">
+              <PhoneField value={phone} onChange={setPhone} />
+            </div>
           </label>
           <Button type="submit">Reservar</Button>
           {msg ? <p className="text-sm text-red-700">{msg}</p> : null}
