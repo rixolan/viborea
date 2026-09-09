@@ -99,7 +99,7 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
    `docker compose -p viborea --env-file .env build app && docker compose -p viborea --env-file .env up -d --no-deps app`
 6. Avoid `up` that recreates `db` unless you intend it. Volume `viborea_pgdata` is the data. `bandeja-2ryryu_pgdata` is backup.
 7. Clerk publishable key: compose build-arg `NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY`.
-8. Metabase (`academiadg-metabase-nimooc`): must be on network `viborea`. Database **Academia**: host `viborea-db-1`, db/user `viborea`. After host/db rename, `POST /api/database/3/sync_schema` with a session. Do not print DB passwords or git oauth tokens.
+8. Metabase (`academiadg-metabase-nimooc`): must be on network `viborea`. Database **Academia**: host `viborea-db-1`, db/user `viborea`. After host/db rename, `POST /api/database/3/sync_schema` with a session. Do not print DB passwords or git oauth tokens. Do not add analysis views to product schema.
 9. Public check: `https://viborea.com/api/health` and the SPA path you changed.
 
 **Files:** `compose.yaml`, `Dockerfile`, `.env.example`

@@ -124,7 +124,7 @@ If `web/dist` exists, GET (except `/piloto`) serves the SPA. Leftover HTML in `c
 - GitHub: `rixolan/viborea` (origin). Upstream Tandava: `TaylorONeal/tandava`.
 - Dokploy project **academia-dg** / production, compose **viborea**, dir `/etc/dokploy/compose/viborea/code`.
 - Public: `https://viborea.com` → `viborea-app-1:8080` on Docker network **`viborea`**. Traefik must be attached to that network (`traefik.docker.network=viborea`).
-- Metabase: Dokploy compose `metabase` (`academiadg-metabase-nimooc`), database **Academia** → host `viborea-db-1`, db/user `viborea`. Sync schema after migrate. Views `metabase_disponibilidad_profe` (pivot hora×día) and `metabase_disponibilidad_calendario` (4 semanas + `ocupado`). OSS has no Python cells.
+- Metabase: Dokploy compose `metabase` (`academiadg-metabase-nimooc`), database **Academia** → host `viborea-db-1`, db/user `viborea`. Sync schema after migrate. No analysis views in product schema.
 - Image build arg Clerk: `NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY` (publishable only).
 - After compose changes: `git pull` in that dir, `docker compose -p viborea --env-file .env build app`, `up -d --no-deps app`. Do not recreate Postgres unless migrating data. Old volume `bandeja-2ryryu_pgdata` is a backup only.
 
