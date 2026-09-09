@@ -167,4 +167,20 @@ describe.skipIf(!url)("aislamiento", () => {
     );
     await db.end();
   });
+
+  it("jugador Clerk reclama la ficha guest de esta misma cookie", async () => {
+    const db = await openDb(url);
+    await seedIfEmpty(db);
+    const guest = await findOrCreateStudent(db, DG_ACADEMY_ID, "Ana Cookie", `+595982${Date.now().toString().slice(-6)}`);
+    const clerkId = `user_claim_${Date.now()}`;
+    const claimed = await identifyPlayer(db, DG_ACADEMY_ID, {
+      clerkUserId: clerkId,
+      cookieStudentId: guest.id,
+      claimCookie: true,
+    });
+    expect(claimed?.id).toBe(guest.id);
+    expect(claimed?.clerk_user_id).toBe(clerkId);
+    expect((await identifyPlayer(db, DG_ACADEMY_ID, { clerkUserId: clerkId }))?.id).toBe(guest.id);
+    await db.end();
+  });
 });

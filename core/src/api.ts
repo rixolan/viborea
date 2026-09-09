@@ -46,7 +46,8 @@ async function playerOf(req: Request, db: Db, academy: Academy) {
   const cookieStudentId = decodePlayerCookie(academy.id, raw);
   return identifyPlayer(db, academy.id, {
     clerkUserId: clerk?.userId ?? null,
-    cookieStudentId: clerk?.userId ? null : cookieStudentId,
+    cookieStudentId,
+    claimCookie: Boolean(clerk?.userId && !clerk.orgId),
   });
 }
 

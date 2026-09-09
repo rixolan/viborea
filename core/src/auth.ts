@@ -16,8 +16,14 @@ type JwtClaims = {
   o?: { id?: string; slg?: string; nam?: string };
 };
 
+function clerkSecret(): string | undefined {
+  const raw = process.env.CLERK_SECRET_KEY?.trim();
+  if (!raw) return undefined;
+  return raw.replace(/^["']|["']$/g, "") || undefined;
+}
+
 export async function readClerk(req: Request): Promise<ClerkAuth | null> {
-  const secret = process.env.CLERK_SECRET_KEY;
+  const secret = clerkSecret();
   const hdr = req.headers.get("authorization") ?? "";
   const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : "";
   if (!secret || !token) return null;
@@ -37,7 +43,7 @@ export async function readClerk(req: Request): Promise<ClerkAuth | null> {
 }
 
 export async function requireAcademy(req: Request, db: Db): Promise<{ academy: Academy } | Response> {
-  const secret = process.env.CLERK_SECRET_KEY;
+  const secret = clerkSecret();
   if (!secret) {
     const ac = (await academyBySlug(db, "academiadg")) ?? (await academyById(db, DG_ACADEMY_ID));
     return { academy: ac };

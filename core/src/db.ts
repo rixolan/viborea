@@ -563,9 +563,21 @@ export async function updateStudent(
 export async function identifyPlayer(
   db: Db,
   academyId: string,
-  input: { clerkUserId?: string | null; cookieStudentId?: string | null },
+  input: { clerkUserId?: string | null; cookieStudentId?: string | null; claimCookie?: boolean },
 ): Promise<Student | null> {
-  if (input.clerkUserId) return studentByClerk(db, academyId, input.clerkUserId);
+  if (input.clerkUserId) {
+    const linked = await studentByClerk(db, academyId, input.clerkUserId);
+    if (linked) return linked;
+    if (input.claimCookie && input.cookieStudentId) {
+      const cookie = await studentById(db, academyId, input.cookieStudentId);
+      if (cookie && !cookie.clerk_user_id) {
+        await db`UPDATE students SET clerk_user_id = ${input.clerkUserId}
+          WHERE id = ${cookie.id} AND academy_id = ${academyId} AND clerk_user_id IS NULL`;
+        return { ...cookie, clerk_user_id: input.clerkUserId };
+      }
+    }
+    return null;
+  }
   if (!input.cookieStudentId) return null;
   const cookie = await studentById(db, academyId, input.cookieStudentId);
   if (!cookie || cookie.clerk_user_id) return null;
