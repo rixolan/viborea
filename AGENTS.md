@@ -64,35 +64,40 @@ Root `package.json` still has Tandava Vite scripts (`bun run dev:fork`, `vitest`
 ## Tree
 
 ```
-core/src/domain/     overlap, capacity, template, cutoff, pack, student
+core/src/domain/     overlap, capacity, template, cutoff, pack, student, availability
 core/src/db/         schema.sql, migrate.ts, postgres.js
-core/src/db.ts       persistence + week materialize
+core/src/db.ts       persistence + week grid + reminders
 core/src/api.ts      JSON API
-core/src/server.ts   Bun.serve: API, SPA, leftover HTML, hooks
-core/src/seed.ts     demo academy if empty
-web/src/             React SPA (landing, reservar, jugador, academia)
+core/src/server.ts   Bun.serve: API, SPA, leftover HTML, 60s reminder tick
+core/src/notify/     WhatsApp Cloud API sandbox (`WHATSAPP_TEST_*`)
+core/src/seed.ts     demo academy if empty; `alignCatalog` replaces DG roster
+web/src/             React SPA (landing, reservar, academia)
+web/public/coaches/  seven `{coach_id}.webp` portraits
 compose.yaml         db + app, network `viborea`, volume `viborea_pgdata`
 Dockerfile           SPA build + Bun
 workers/chatwoot-agent-bot/   WhatsApp menu via Chatwoot AgentBot (sandbox only)
 docs/fork/           Viborea domain + Tandava inventory
-docs/adr/            decisions (0001: Postgres 18)
+docs/adr/            decisions (0001: Postgres 18, 0003: multi-academy)
 src/                 Tandava React SPA (reference, AGPL). Not the product UI.
 supabase/            Tandava migrations. Not the product DB.
 ```
 
 ## Domain engine (non-negotiable)
 
-- **Session** exists with court + coach + interval even if nobody booked or paid.
+- **Session** exists with court + coach + interval even if nobody booked or paid. On DG it is created at the first booking on an availability hole.
+- **Availability** (`coach_availability`) is DG’s mother: coach + location + weekday + franja, exploded to 60 min holes. Not a Session.
 - Overlap: same half-open interval `[start, end)` **and** same `court_id` **or** same `coach_id` → error. Adjacent hours do not overlap. Cancelled sessions do not occupy.
 - Occupying booking statuses: `pending_payment`, `confirmed`, `checked_in`. Not: `cancelled`, `waitlisted`, `no_show`.
 - Offerings are capacity 1 (individual) or N (grupal). CONTEXT.md: **no dual** as a third engine.
-- Template (`templates`) materializes `sessions` (`source = template`). Exception edits one session. Do not mutate the mother unless “from this week on”.
-- `ensureWeek` materializes the requested Monday week. `/api/week?monday=` must call it (not the `week=` HTML query).
-- Cutoff: `academy.cutoff_hours` (default 12). Not hardcoded to DG’s 24h.
+- Template (`templates`) still materializes `sessions` (`source = template`) where used. Exception edits one session.
+- `/api/a/:slug/week` returns `weekGrid` (locked sessions + free holes). Staff `/api/week` still `ensureWeek`.
+- Cutoff: `academy.cutoff_hours` (default 12). Self-serve book/cancel/reschedule only outside that window.
+- 24h reminder: occupying booking with `reminded_at` null and `starts_at` within 24h → WhatsApp + manage link. Tick in `server.ts`.
 - Money: integer minor units + `currency`. Never assume Gs. or Stripe.
 - Pack consume: same moment Tandava already used (confirm covered booking), not a third moment.
+- Player identity: Clerk JWT wins; a player **without org** may claim the guest cookie. Staff JWT must not inherit another student’s cookie.
 
-Code: `core/src/domain/overlap.ts`, `capacity.ts`, `template.ts`, `cutoff.ts`, `pack.ts`. Tests: `core/src/domain/*.test.ts`, `core/src/db.test.ts`.
+Code: `core/src/domain/overlap.ts`, `capacity.ts`, `template.ts`, `cutoff.ts`, `pack.ts`, `availability.ts`. Tests: `core/src/domain/*.test.ts`, `core/src/db.test.ts`.
 
 ## HTTP
 
@@ -100,17 +105,24 @@ JSON (SPA):
 
 | Method | Path | Role |
 |---|---|---|
-| GET | `/api/health` | liveness |
-| GET | `/api/booker` | slug if exactly one academy (cutover 301) |
-| GET | `/api/a/:slug/week?monday=` | public booker week |
-| POST | `/api/a/:slug/book` | public book (`pending_payment` / waitlist) |
+| GET | `/api/health` | liveness (`{"ok":true}`) |
+| GET | `/api/booker` | `{slug}` if exactly one academy |
+| GET | `/api/a/:slug/catalog` | public locations/coaches |
+| GET | `/api/a/:slug/week?monday=` | public booker week (holes + locked) |
+| POST | `/api/a/:slug/book` | public book; sets player cookie; WhatsApp if configured |
+| GET | `/api/a/:slug/me` | player history (Clerk and/or cookie) |
+| GET | `/api/a/:slug/manage/:token` | HMAC manage page payload |
+| POST | `/api/a/:slug/manage/:token/cancel` | self-serve cancel if cutoff open |
+| POST | `/api/a/:slug/manage/:token/reschedule` | self-serve move if cutoff open |
 | GET | `/api/week?monday=` | staff week (org JWT → academy_id) |
 | GET | `/api/sessions/:id` | staff session + roster |
 | POST | `/api/bookings/:id/status` | academia marks paid / pending |
 
-SPA routes: `/`, `/entrar`, `/reservar`, `/reservar/:slug`, `/reservar/:slug/:sessionId`, `/academia`, `/academia/sesion/:id`.
+SPA: `/`, `/entrar`, `/reservar`, `/reservar/:slug`, `/reservar/:slug/clases`, `/reservar/:slug/turno/:token`, `/reservar/:slug/:sessionId`, `/academia`, `/academia/sesion/:id`. `/jugador` → `/`.
 
-If `web/dist` exists, GET (except `/piloto`) serves the SPA. Leftover HTML in `core/src/html.ts` is fallback for local-without-dist and `/piloto`. Do not add new HTML pages; add React + `/api`.
+If `web/dist` exists, GET (except `/piloto`) serves the SPA. Leftover HTML in `core/src/html.ts` is fallback. Do not add new HTML pages; add React + `/api`.
+
+Coach portraits: `web/public/coaches/{coach_id}.webp` → `/coaches/…`. Not Postgres, not R2.
 
 ## Data
 - Schema: `core/src/db/schema.sql`. Additive changes: new id in `core/src/db/migrate.ts`.
@@ -124,9 +136,16 @@ If `web/dist` exists, GET (except `/piloto`) serves the SPA. Leftover HTML in `c
 - GitHub: `rixolan/viborea` (origin). Upstream Tandava: `TaylorONeal/tandava`.
 - Dokploy project **academia-dg** / production, compose **viborea**, dir `/etc/dokploy/compose/viborea/code`.
 - Public: `https://viborea.com` → `viborea-app-1:8080` on Docker network **`viborea`**. Traefik must be attached to that network (`traefik.docker.network=viborea`).
+- VPS Tailscale: `per-net-us-east` (`100.98.190.87`). Host firewall only forwards **80/443**. Postgres is `127.0.0.1:5432` only. Hex (and similar) SSH is **port 80** via `sslh` → `127.0.0.1:22` (user `hex`, key-only). Do not publish `5432`.
 - Metabase: Dokploy compose `metabase` (`academiadg-metabase-nimooc`), database **Academia** → host `viborea-db-1`, db/user `viborea`. Sync schema after migrate. No analysis views in product schema.
-- Image build arg Clerk: `NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY` (publishable only).
-- After compose changes: `git pull` in that dir, `docker compose -p viborea --env-file .env build app`, `up -d --no-deps app`. Do not recreate Postgres unless migrating data. Old volume `bandeja-2ryryu_pgdata` is a backup only.
+- Image build arg Clerk: `NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY` (publishable only). Runtime `CLERK_SECRET_KEY` from `.env` (`NUXT_CLERK_SECRET_KEY` alias). Live image still uses **Clerk development** (`pk_test`) until a `pk_live` rebuild.
+- WhatsApp sandbox: `WHATSAPP_TEST_TOKEN` + `WHATSAPP_TEST_PHONE_NUMBER_ID` from Doppler project **viborea** config **dev** (prd is empty). `APP_URL=https://viborea.com`. Dokploy “Redeploy” rewrites `.env` from its stored blob and **drops** those keys unless they are in the Dokploy env UI.
+- Deploy command (one `docker`, not `docker docker`):
+  `git fetch && git reset --hard origin/main`
+  then `docker compose -p viborea --env-file .env build app && docker compose -p viborea --env-file .env up -d --no-deps app`
+- Dokploy UI error `unknown shorthand flag: 'p'` means the compose command was saved as `docker docker compose …`. Fix the command field; do not Redeploy until it is a single `docker compose`.
+- Volume warning `viborea_pgdata already exists` is harmless. Do not recreate `db`. Old volume `bandeja-2ryryu_pgdata` is backup only.
+- Public check: `https://viborea.com/api/health` → `{"ok":true}`; SPA asset hash in `/`; `/coaches/coach-pablo-recalde.webp` 200.
 
 ## Constraints (do not)
 
@@ -143,12 +162,14 @@ If `web/dist` exists, GET (except `/piloto`) serves the SPA. Leftover HTML in `c
 
 | Job | Where |
 |---|---|
-| Overlap / capacity / template | `core/src/domain/*` + `bun --cwd core test` |
+| Overlap / capacity / template / availability | `core/src/domain/*` + `bun --cwd core test` |
 | Persist / SQL | `schema.sql` + `migrate.ts` + `db.ts` |
 | JSON contract | `core/src/api.ts` and `web/src/api.ts` together |
 | Visible copy / areas | `web/src/pages.tsx`, `shell.tsx`, `App.tsx` |
-| Seed catalog | `core/src/seed.ts` |
+| Seed catalog / DG roster | `core/src/seed.ts` |
+| Coach portraits | `web/public/coaches/{id}.webp` + `COACH_PHOTOS` in `web/src/booker.tsx` |
 | Compose / Traefik | `compose.yaml` (network name must match live Docker network) |
+| WhatsApp send / reminders | `core/src/notify/whatsapp.ts`, `server.ts` tick, Doppler `viborea/dev` |
 | WhatsApp menu (sandbox) | `workers/chatwoot-agent-bot/` |
 
 Commits: only if the human asks, unless the same session is already shipping to `origin/main` for deploy.

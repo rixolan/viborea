@@ -91,20 +91,23 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 
 **Do:**
 
-1. Origin is `https://github.com/rixolan/viborea.git`. VPS code: `/etc/dokploy/compose/viborea/code`.
-2. Dokploy project **academia-dg** / **production**. Compose name **`viborea`** (`appName` `viborea`). Metabase and Chatwoot are sibling composes in the same project, not this repo’s `compose.yaml`.
-3. Docker network **`viborea`** (external). App labels: `traefik.docker.network=viborea`. Traefik must be connected to that network or HTTPS hangs / 502.
-4. Do not attach the app-only to `dokploy-network` overlay as the Traefik network; that overlay left empty IPs on this host before.
-5. Deploy: `git fetch && git reset --hard origin/main` in the code dir, then  
-   `docker compose -p viborea --env-file .env build app && docker compose -p viborea --env-file .env up -d --no-deps app`
-6. Avoid `up` that recreates `db` unless you intend it. Volume `viborea_pgdata` is the data. `bandeja-2ryryu_pgdata` is backup.
+1. Origin is `https://github.com/rixolan/viborea.git`. VPS code: `/etc/dokploy/compose/viborea/code`. SSH: Tailscale `per-net-us-east`.
+2. Dokploy project **academia-dg** / **production**. Compose name **`viborea`**. Metabase and Chatwoot are sibling composes, not this repo’s `compose.yaml`.
+3. Docker network **`viborea`** (external). App labels: `traefik.docker.network=viborea`.
+4. Do not attach the app-only to `dokploy-network` overlay as the Traefik network.
+5. Deploy: `git fetch && git reset --hard origin/main` then  
+   `docker compose -p viborea --env-file .env build app && docker compose -p viborea --env-file .env up -d --no-deps app`  
+   One `docker`, never `docker docker compose` (Dokploy UI has shown that typo → `unknown shorthand flag: 'p'`).
+6. Avoid `up` that recreates `db`. Volume `viborea_pgdata` is the data. `bandeja-2ryryu_pgdata` is backup. “volume already exists” is not a failure.
 7. Clerk publishable key: compose build-arg `NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY`.
-8. Metabase (`academiadg-metabase-nimooc`): must be on network `viborea`. Database **Academia**: host `viborea-db-1`, db/user `viborea`. After host/db rename, `POST /api/database/3/sync_schema` with a session. Do not print DB passwords or git oauth tokens. Do not add analysis views to product schema.
-9. Public check: `https://viborea.com/api/health` and the SPA path you changed.
+8. WhatsApp: copy `WHATSAPP_TEST_*` from Doppler `viborea`/`dev` into the VPS `.env` after any Dokploy Redeploy (it overwrites `.env`). `APP_URL=https://viborea.com`.
+9. Metabase (`academiadg-metabase-nimooc`): network `viborea`, host `viborea-db-1`. Do not print DB passwords or git oauth tokens.
+10. Host only exposes 80/443. Postgres stays on `127.0.0.1:5432`. Hex SSH uses port **80** (`sslh`).
+11. Public check: `https://viborea.com/api/health` (`{"ok":true}`), SPA hash, `/coaches/coach-pablo-recalde.webp`.
 
 **Files:** `compose.yaml`, `Dockerfile`, `.env.example`
 
-**Check:** containers `viborea-app-1`, `viborea-db-1`; health JSON; Traefik router uses `172.x` on network `viborea`.
+**Check:** containers `viborea-app-1`, `viborea-db-1`; health JSON; Traefik on network `viborea`.
 
 ---
 
@@ -118,10 +121,11 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 2. Happy path payment is stub / manual mark paid in Academia. `core/src/payments/tpago.ts` stays behind the interface. No live keys in git or chat.
 3. Do not connect the academy’s production WhatsApp/Meta number. No OpenWA/WAHA.
 4. Chatwoot AgentBot: `workers/chatwoot-agent-bot/` — sandbox or a dedicated WABA only. It does not write the real grid yet.
-5. Pack alerts / WhatsApp notify: `core/src/notify/whatsapp.ts` (dry-run unless configured).
-6. Cutoff and pack rules: `core/src/domain/cutoff.ts`, `pack.ts`. Configurable per academy, not hardcoded to DG.
+5. Notify + 24h reminder: `core/src/notify/whatsapp.ts` (dry-run unless `WHATSAPP_TEST_*` set). Manage link `core/src/manage-link.ts` → `/reservar/:slug/turno/:token`. Cancel/reschedule only if `selfServeOpen` (cutoff, default 12h).
+6. Secrets: Doppler project **viborea**, config **dev**. Never commit tokens.
+7. Cutoff and pack rules: `core/src/domain/cutoff.ts`, `pack.ts`. Configurable per academy.
 
-**Files:** `core/src/payments/tpago.ts`, `core/src/notify/whatsapp.ts`, `docs/fork/TPAGO.md`, `workers/chatwoot-agent-bot/README.md`
+**Files:** `core/src/payments/tpago.ts`, `core/src/notify/whatsapp.ts`, `core/src/manage-link.ts`, `docs/fork/TPAGO.md`, `workers/chatwoot-agent-bot/README.md`
 
 **Check:** domain tests; never a production webhook URL in this repo.
 
