@@ -42,9 +42,13 @@ function json(data: unknown, status = 200) {
   return Response.json(data, { status });
 }
 
-/** Hashed build assets are immutable; the shell never is. */
+/**
+ * Everything Vite emits under `assets/` carries a content hash in its name
+ * (`index-o_RU9OUK.js`), so it can never change under the same URL. Files
+ * served from anywhere else — the coach portraits in `public/` — can.
+ */
 function assetHeaders(path: string): Record<string, string> {
-  return /\.[0-9a-f]{8,}\.(js|css|woff2?|png|webp|svg|jpg|jpeg|avif)$/i.test(path)
+  return path.startsWith("assets/")
     ? { "cache-control": "public, max-age=31536000, immutable" }
     : { "cache-control": "public, max-age=3600" };
 }
