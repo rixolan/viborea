@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.0",
+    "@clerk/localizations": "^4.16.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-international-phone": "^4.8.0",

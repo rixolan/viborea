@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, NavLink, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { CreateOrganization, SignIn, SignUp, useAuth } from "@clerk/clerk-react";
+import { CreateOrganization, SignIn, SignUp, useAuth, useClerk, useUser } from "@clerk/clerk-react";
+import { accountContact, accountReady, type AccountContact } from "./account";
 import { api, type Coach, type HistoryBooking, type Offering, type Session, type SessionDetail, type Student } from "./api";
 import { RequireAcademia, RequireAuth } from "./auth";
 import { Badge, Button, Card, Input } from "./ui";
@@ -8,6 +9,8 @@ import { Booker, coachPhoto, languageLabels } from "./booker";
 import { WeekGrid, hhmm } from "./week-grid";
 import { PhoneField } from "./phone-field";
 import { parsePhone, phoneIssue } from "./phone";
+
+const clerkFields = { layout: { showOptionalFields: true } };
 
 function mondayISO(d = new Date()) {
   const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -88,7 +91,7 @@ function EntrarAcademiaGate() {
     <div className="mx-auto max-w-md py-8">
       <h1 className="mb-2 text-2xl font-semibold">Academia</h1>
       <p className="mb-6 text-sm text-stone-600">Entrá para operar la grilla de tu academia.</p>
-      <SignIn routing="hash" forceRedirectUrl="/academia" signUpUrl="/registro" />
+      <SignIn routing="hash" forceRedirectUrl="/academia" signUpUrl="/registro" appearance={clerkFields} />
     </div>
   );
 }
@@ -100,7 +103,7 @@ export function Registro() {
     <div className="mx-auto max-w-md py-8">
       <h1 className="mb-2 text-2xl font-semibold">Registrar academia</h1>
       <p className="mb-6 text-sm text-stone-600">Después creás el espacio de tu academia.</p>
-      <SignUp routing="hash" forceRedirectUrl="/academia/nueva" signInUrl="/entrar/academia" />
+      <SignUp routing="hash" forceRedirectUrl="/academia/nueva" signInUrl="/entrar/academia" appearance={clerkFields} />
     </div>
   );
 }
@@ -139,7 +142,7 @@ function EntrarJugadorGate({ slug }: { slug: string }) {
         Entrá para ver tus clases de esta academia en cualquier dispositivo. Podés reservar sin cuenta; este paso las
         ata a vos.
       </p>
-      <SignIn routing="hash" forceRedirectUrl={after} signUpUrl={`/entrar/jugador/${slug}/registro`} />
+      <SignIn routing="hash" forceRedirectUrl={after} signUpUrl={`/entrar/jugador/${slug}/registro`} appearance={clerkFields} />
     </div>
   );
 }
@@ -153,8 +156,10 @@ export function RegistroJugador() {
   return (
     <div className="mx-auto max-w-md py-8">
       <h1 className="mb-2 text-2xl font-semibold">Crear cuenta de jugador</h1>
-      <p className="mb-6 text-sm text-stone-600">Queda ligada a esta academia, no a Viborea en general.</p>
-      <SignUp routing="hash" forceRedirectUrl={after} signInUrl={`/entrar/jugador/${slug}`} />
+      <p className="mb-6 text-sm text-stone-600">
+        Nombre y WhatsApp quedan en tu cuenta. Al reservar los usamos; si hay que cambiarlos, se editan ahí.
+      </p>
+      <SignUp routing="hash" forceRedirectUrl={after} signInUrl={`/entrar/jugador/${slug}`} appearance={clerkFields} />
     </div>
   );
 }
@@ -348,23 +353,36 @@ function formatDay(iso: string) {
 
 export function ReservarSesion() {
   if (!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) {
-    return <ReservarSesionForm getToken={async () => null} signedIn={false} />;
+    return <ReservarSesionForm getToken={async () => null} signedIn={false} account={null} />;
   }
   return <ReservarSesionAuthed />;
 }
 
 function ReservarSesionAuthed() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
-  if (!isLoaded) return <p className="text-sm text-stone-500">Cargando…</p>;
-  return <ReservarSesionForm getToken={getToken} signedIn={Boolean(isSignedIn)} />;
+  const { user, isLoaded: userLoaded } = useUser();
+  const { openUserProfile } = useClerk();
+  if (!isLoaded || !userLoaded) return <p className="text-sm text-stone-500">Cargando…</p>;
+  return (
+    <ReservarSesionForm
+      getToken={getToken}
+      signedIn={Boolean(isSignedIn)}
+      account={accountContact(user)}
+      onEditAccount={() => openUserProfile()}
+    />
+  );
 }
 
 function ReservarSesionForm({
   getToken,
   signedIn,
+  account,
+  onEditAccount,
 }: {
   getToken: (opts?: { skipCache?: boolean }) => Promise<string | null>;
   signedIn: boolean;
+  account: AccountContact | null;
+  onEditAccount?: () => void;
 }) {
   const { slug, sessionId } = useParams();
   const nav = useNavigate();
@@ -406,7 +424,12 @@ function ReservarSesionForm({
     e.preventDefault();
     if (!slug || !sessionId) return;
     setMsg(null);
-    if (!me) {
+    const known = accountReady(account) ? account : me ? { name: me.name, phone: me.phone } : null;
+    if (signedIn && !known) {
+      setMsg("Completá nombre y WhatsApp en tu cuenta.");
+      return;
+    }
+    if (!known) {
       const issue = phoneIssue(phone);
       if (issue) {
         setMsg(issue);
@@ -418,11 +441,13 @@ function ReservarSesionForm({
       setMsg("Elegí individual o grupal");
       return;
     }
+    const bookName = known?.name ?? name;
+    const bookPhone = known ? (accountReady(account) ? parsePhone(account.phone) : known.phone) : parsePhone(phone);
     try {
       const token = (await getToken({ skipCache: true })) ?? (await getToken()) ?? undefined;
       const r = await api.book(
         slug,
-        { sessionId, name, phone: me?.phone ?? parsePhone(phone), offeringId: open ? offeringId : undefined },
+        { sessionId, name: bookName, phone: bookPhone, offeringId: open ? offeringId : undefined },
         token,
       );
       setWaitlist(r.status === "waitlisted");
@@ -447,8 +472,9 @@ function ReservarSesionForm({
     ["Profe", session.coach_name],
     ["Clase", clase],
   ];
+  const known = accountReady(account) ? account : me ? { name: me.name, phone: me.phone } : null;
   if (done) {
-    rows.push(["A nombre de", name]);
+    rows.push(["A nombre de", known?.name || name]);
   }
   return (
     <div className="mx-auto max-w-md space-y-4">
@@ -526,15 +552,32 @@ function ReservarSesionForm({
             )}
             {!meReady ? (
               <p className="text-sm text-stone-500">Cargando tu ficha…</p>
-            ) : me ? (
-              <p className="text-sm text-stone-600">
-                Reservás como {me.name} · {me.phone}
-              </p>
+            ) : known ? (
+              <div className="rounded-md border border-stone-200 bg-white px-4 py-3 text-sm">
+                <p className="text-stone-500">Reservás como</p>
+                <p className="mt-0.5 font-medium">
+                  {known.name}
+                  {known.phone ? ` · ${known.phone}` : ""}
+                </p>
+                {signedIn && onEditAccount ? (
+                  <button type="button" className="mt-2 text-xs underline" onClick={onEditAccount}>
+                    Editar en tu cuenta
+                  </button>
+                ) : null}
+              </div>
+            ) : signedIn ? (
+              <div className="rounded-md border border-stone-200 bg-white px-4 py-3 text-sm">
+                <p className="text-stone-600">
+                  Completá nombre y WhatsApp en tu cuenta. No los pedimos en cada reserva.
+                </p>
+                {onEditAccount ? (
+                  <button type="button" className="mt-2 text-xs underline" onClick={onEditAccount}>
+                    Editar en tu cuenta
+                  </button>
+                ) : null}
+              </div>
             ) : (
               <>
-                {signedIn ? (
-                  <p className="text-sm text-stone-600">Primera reserva de esta cuenta: nombre y WhatsApp de la ficha.</p>
-                ) : null}
                 <label className="block text-sm" htmlFor="name">
                   Nombre
                   <Input
@@ -556,7 +599,11 @@ function ReservarSesionForm({
                 </label>
               </>
             )}
-            <Button type="submit" className="w-full" disabled={!meReady || (!me && Boolean(phoneIssue(phone)))}>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={!meReady || (signedIn ? !known : Boolean(phoneIssue(phone)))}
+            >
               Reservar
             </Button>
             {msg ? (

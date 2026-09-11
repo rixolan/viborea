@@ -242,4 +242,29 @@ describe.skipIf(!url)("aislamiento", () => {
     expect((await identifyPlayer(db, DG_ACADEMY_ID, { clerkUserId: clerkId }))?.id).toBe(guest.student.id);
     await db.end();
   });
+
+  it("publicBook con ficha Clerk toma nombre y teléfono de la cuenta", async () => {
+    const db = await openDb(url);
+    await ready(db);
+    const monday = addDays(mondayOf(new Date()), 7);
+    const holes = (await weekGrid(db, DG_ACADEMY_ID, monday)).filter((s) => s.source === "availability");
+    const a = holes[0];
+    const b = holes.find((s) => s.id !== a?.id);
+    expect(a && b).toBeTruthy();
+    const phone = `+595983${Date.now().toString().slice(-6)}`;
+    const nextPhone = `+595980${Date.now().toString().slice(-6)}`;
+    const clerkId = `user_account_sync_${Date.now()}`;
+    const first = await publicBook(db, DG_ACADEMY_ID, a!.id, "Ana Vieja", phone, {
+      offeringId: "off-grupal",
+      clerkUserId: clerkId,
+    });
+    const second = await publicBook(db, DG_ACADEMY_ID, b!.id, "Ana Nueva", nextPhone, {
+      offeringId: "off-grupal",
+      clerkUserId: clerkId,
+    });
+    expect(second.student.id).toBe(first.student.id);
+    expect(second.student.name).toBe("Ana Nueva");
+    expect(second.student.phone).toBe(nextPhone);
+    await db.end();
+  });
 });

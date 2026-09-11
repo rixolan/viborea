@@ -653,6 +653,27 @@ export async function bookStudent(
   return status;
 }
 
+async function applyAccountContact(db: Db, student: Student, name: string, phone: string): Promise<Student> {
+  const trimmedName = name.trim();
+  let nextName = student.name;
+  let nextPhone = student.phone;
+  if (trimmedName) nextName = trimmedName;
+  if (phone.trim()) {
+    try {
+      const parsed = parsePhone(phone);
+      if (parsed !== student.phone) {
+        const [taken] = await db`SELECT id FROM students WHERE academy_id = ${student.academy_id} AND phone = ${parsed} AND id <> ${student.id}`;
+        if (!taken) nextPhone = parsed;
+      }
+    } catch {
+      // keep the ficha phone if the account number is not usable
+    }
+  }
+  if (nextName === student.name && nextPhone === student.phone) return student;
+  await db`UPDATE students SET name = ${nextName}, phone = ${nextPhone} WHERE id = ${student.id}`;
+  return { ...student, name: nextName, phone: nextPhone };
+}
+
 async function resolveBookerStudent(
   db: Db,
   academyId: string,
@@ -662,7 +683,7 @@ async function resolveBookerStudent(
 ): Promise<Student> {
   if (extra?.clerkUserId) {
     const linked = await studentByClerk(db, academyId, extra.clerkUserId);
-    if (linked) return linked;
+    if (linked) return applyAccountContact(db, linked, name, phone);
   }
   if (extra?.cookieStudentId) {
     const cookie = await studentById(db, academyId, extra.cookieStudentId);
