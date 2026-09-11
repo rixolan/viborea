@@ -67,6 +67,10 @@ export async function migrate(db: Db): Promise<void> {
   await apply(db, "010_booking_reminded", async () => {
     await db`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminded_at TIMESTAMPTZ`;
   });
+  await apply(db, "011_coach_profile", async () => {
+    await db`ALTER TABLE coaches ADD COLUMN IF NOT EXISTS bio TEXT`;
+    await db`ALTER TABLE coaches ADD COLUMN IF NOT EXISTS languages TEXT[] NOT NULL DEFAULT '{}'`;
+  });
 }
 
 async function apply(db: Db, id: string, run: () => Promise<void>): Promise<void> {

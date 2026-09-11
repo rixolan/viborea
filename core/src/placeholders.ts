@@ -25,7 +25,6 @@ export const PLACEHOLDER_SEDES = [
 export const PLACEHOLDER_PROFES = [
   { id: "rodrigo", name: "Rodrigo Avila", photo: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&h=400&q=80" },
   { id: "tati", name: "Tati", photo: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&h=400&q=80" },
-  { id: "diego", name: "Diego", photo: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=400&h=400&q=80" },
   { id: "pablo", name: "Pablo", photo: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&h=400&q=80" },
 ] as const;
 

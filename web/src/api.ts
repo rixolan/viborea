@@ -24,7 +24,13 @@ export type Location = {
   maps_url?: string | null;
   image_url?: string | null;
 };
-export type Coach = { id: string; name: string };
+export type Coach = {
+  id: string;
+  name: string;
+  bio?: string | null;
+  languages?: string[];
+  location_ids?: string[];
+};
 export type Court = { id: string; location_id: string; name: string; number: number };
 export type Offering = { id: string; name: string; duration_minutes: number; capacity: number; price: number };
 export type Student = {

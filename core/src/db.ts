@@ -42,7 +42,7 @@ export type Location = {
   image_url: string | null;
 };
 export type Court = { id: string; location_id: string; name: string; number: number };
-export type Coach = { id: string; name: string };
+export type Coach = { id: string; name: string; bio: string | null; languages: string[]; location_ids: string[] };
 export type Offering = {
   id: string;
   name: string;
@@ -251,17 +251,30 @@ export async function updateCutoffHours(db: Db, academyId: string, raw: string |
 }
 
 export async function catalogs(db: Db, academyId: string) {
-  const [locations, courts, coaches, offerings, students] = await Promise.all([
+  const [locations, courts, coaches, offerings, students, availability] = await Promise.all([
     db`SELECT * FROM locations WHERE academy_id = ${academyId} ORDER BY name`,
     db`SELECT * FROM courts WHERE academy_id = ${academyId} ORDER BY location_id, number`,
-    db`SELECT * FROM coaches WHERE academy_id = ${academyId} ORDER BY name`,
+    db`SELECT id, name, bio, languages FROM coaches WHERE academy_id = ${academyId} ORDER BY name`,
     db`SELECT * FROM offerings WHERE academy_id = ${academyId} ORDER BY capacity`,
     db`SELECT * FROM students WHERE academy_id = ${academyId} ORDER BY name`,
+    db`SELECT DISTINCT coach_id, location_id FROM coach_availability WHERE academy_id = ${academyId}`,
   ]);
+  const locByCoach = new Map<string, string[]>();
+  for (const row of availability as { coach_id: string; location_id: string }[]) {
+    const list = locByCoach.get(row.coach_id) ?? [];
+    if (!list.includes(row.location_id)) list.push(row.location_id);
+    locByCoach.set(row.coach_id, list);
+  }
   return {
     locations: locations as Location[],
     courts: courts as Court[],
-    coaches: coaches as Coach[],
+    coaches: (coaches as { id: string; name: string; bio: string | null; languages: string[] | null }[]).map((c) => ({
+      id: c.id,
+      name: c.name,
+      bio: c.bio ?? null,
+      languages: c.languages ?? [],
+      location_ids: locByCoach.get(c.id) ?? [],
+    })),
     offerings: offerings as Offering[],
     students: (students as Parameters<typeof studentFrom>[0][]).map(studentFrom),
   };
@@ -650,17 +663,24 @@ async function resolveBookerStudent(
   if (extra?.clerkUserId) {
     const linked = await studentByClerk(db, academyId, extra.clerkUserId);
     if (linked) return linked;
-    return findOrCreateStudent(db, academyId, name, phone, extra);
   }
   if (extra?.cookieStudentId) {
     const cookie = await studentById(db, academyId, extra.cookieStudentId);
     if (cookie) {
-      if (cookie.clerk_user_id) throw new ClaimedFichaError();
+      if (cookie.clerk_user_id && extra?.clerkUserId && cookie.clerk_user_id !== extra.clerkUserId) {
+        throw new ClaimedFichaError();
+      }
+      if (cookie.clerk_user_id && !extra?.clerkUserId) throw new ClaimedFichaError();
+      if (extra?.clerkUserId && !cookie.clerk_user_id) {
+        await db`UPDATE students SET clerk_user_id = ${extra.clerkUserId}
+          WHERE id = ${cookie.id} AND academy_id = ${academyId} AND clerk_user_id IS NULL`;
+        return { ...cookie, clerk_user_id: extra.clerkUserId };
+      }
       return cookie;
     }
   }
   const trimmedPhone = phone.trim();
-  if (trimmedPhone) {
+  if (trimmedPhone && !extra?.clerkUserId) {
     const [existing] = await db`SELECT * FROM students WHERE academy_id = ${academyId} AND phone = ${trimmedPhone}`;
     if (existing) {
       const row = studentFrom(existing as Parameters<typeof studentFrom>[0]);

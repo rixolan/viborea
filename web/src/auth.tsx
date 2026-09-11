@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useAuth, useOrganization, useOrganizationList, useUser } from "@clerk/clerk-react";
 
 const hasClerk = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
@@ -9,10 +9,10 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   return <SignedInGate>{children}</SignedInGate>;
 }
 
-function SignedInGate({ children }: { children: ReactNode }) {
+function SignedInGate({ children, to = "/entrar/academia" }: { children: ReactNode; to?: string }) {
   const { isLoaded, isSignedIn } = useAuth();
   if (!isLoaded) return <p className="text-sm text-stone-500">Cargando…</p>;
-  if (!isSignedIn) return <Navigate to="/entrar" replace />;
+  if (!isSignedIn) return <Navigate to={to} replace />;
   return children;
 }
 
@@ -41,7 +41,20 @@ function OrgGate({ children }: { children: ReactNode }) {
   if (!userLoaded || !isLoaded || !listLoaded) return <p className="text-sm text-stone-500">Cargando…</p>;
   if (user?.publicMetadata?.role === "academia") return children;
   if (!organization && (userMemberships.data?.length ?? 0) === 0) {
-    return <Navigate to="/academia/nueva" replace />;
+    return (
+      <div className="mx-auto max-w-md space-y-3 py-8">
+        <h1 className="text-2xl font-semibold">Academia</h1>
+        <p className="text-sm text-stone-600">Esta cuenta no administra una academia. Si sos jugador, entrá desde el enlace de tu academia.</p>
+        <div className="flex flex-wrap gap-3 text-sm">
+          <Link to="/entrar" className="underline">
+            Elegir cómo entrar
+          </Link>
+          <Link to="/registro" className="underline">
+            Registrar academia
+          </Link>
+        </div>
+      </div>
+    );
   }
   if (!organization) return <p className="text-sm text-stone-500">Cargando academia…</p>;
   return children;

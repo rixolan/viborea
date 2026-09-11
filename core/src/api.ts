@@ -8,6 +8,7 @@ import {
   deleteTemplate,
   ensureWeek,
   getSession,
+  identifyPlayer,
   listTemplates,
   manageBooking,
   mondayOf,
@@ -16,8 +17,6 @@ import {
   selfServeReschedule,
   sessionBookings,
   setBookingStatus,
-  studentByClerk,
-  studentById,
   studentHistory,
   updateCutoffHours,
   weekGrid,
@@ -30,7 +29,7 @@ import { CutoffError } from "./domain/cutoff";
 import type { BookingStatus, DayOfWeek } from "./domain/types";
 import { readClerk, requireAcademy } from "./auth";
 import { configFromEnv as whatsappConfig, notifyReservation } from "./notify/whatsapp";
-import { clearPlayerCookieHeader, cookieName, decodePlayerCookie, readCookie, setPlayerCookieHeader } from "./player-cookie";
+import { cookieName, decodePlayerCookie, readCookie, setPlayerCookieHeader } from "./player-cookie";
 import { decodeManageToken, manageUrl } from "./manage-link";
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
@@ -50,7 +49,7 @@ async function playerOf(req: Request, db: Db, academy: Academy) {
   return identifyPlayer(db, academy.id, {
     clerkUserId: clerk?.userId ?? null,
     cookieStudentId,
-    claimCookie: Boolean(clerk?.userId && !clerk.orgId),
+    claimCookie: Boolean(clerk?.userId),
   });
 }
 
@@ -110,11 +109,9 @@ async function handleBooker(req: Request, db: Db, url: URL, ac: Academy, rest: s
   }
 
   if (req.method === "GET" && rest === "me") {
-    const clerk = await readClerk(req);
     const student = await playerOf(req, db, ac);
     if (!student) {
-      const headers = clerk?.userId ? { "Set-Cookie": clearPlayerCookieHeader(ac.slug) } : undefined;
-      return json({ student: null, bookings: [] }, 200, headers);
+      return json({ student: null, bookings: [] });
     }
     return json({ student, bookings: await studentHistory(db, ac.id, student.id) });
   }
@@ -137,7 +134,7 @@ async function handleBooker(req: Request, db: Db, url: URL, ac: Academy, rest: s
         category: parseCategory(body.category),
         side: parseSide(body.side),
         clerkUserId: clerk?.userId ?? null,
-        cookieStudentId: clerk?.userId ? null : cookieStudentId,
+        cookieStudentId,
         offeringId: body.offeringId ?? null,
       });
       const session = await getSession(db, ac.id, sessionId);

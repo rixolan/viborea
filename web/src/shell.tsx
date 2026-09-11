@@ -4,9 +4,12 @@ import { SignedIn, SignedOut, UserButton, useAuth, useOrganization, useUser } fr
 import { api } from "./api";
 
 function AuthSlot() {
+  const loc = useLocation();
+  const booker = loc.pathname.match(/^\/reservar\/([^/]+)/);
+  const entrar = booker ? `/entrar/jugador/${booker[1]}` : "/entrar";
   if (!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) {
     return (
-      <Link to="/entrar" className="text-sm text-stone-600 hover:text-stone-900">
+      <Link to={entrar} className="text-sm text-stone-600 hover:text-stone-900">
         Entrar
       </Link>
     );
@@ -14,7 +17,7 @@ function AuthSlot() {
   return (
     <>
       <SignedOut>
-        <Link to="/entrar" className="text-sm text-stone-600 hover:text-stone-900">
+        <Link to={entrar} className="text-sm text-stone-600 hover:text-stone-900">
           Entrar
         </Link>
       </SignedOut>

@@ -1,10 +1,10 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, NavLink, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { CreateOrganization, SignIn, SignUp, useAuth } from "@clerk/clerk-react";
-import { api, type HistoryBooking, type Offering, type Session, type SessionDetail, type Student } from "./api";
+import { api, type Coach, type HistoryBooking, type Offering, type Session, type SessionDetail, type Student } from "./api";
 import { RequireAcademia, RequireAuth } from "./auth";
 import { Badge, Button, Card, Input } from "./ui";
-import { Booker, coachPhoto } from "./booker";
+import { Booker, coachPhoto, languageLabels } from "./booker";
 import { WeekGrid, hhmm } from "./week-grid";
 import { PhoneField } from "./phone-field";
 import { parsePhone, phoneIssue } from "./phone";
@@ -40,40 +40,121 @@ export function Landing() {
   );
 }
 
-export function Entrar() {
-  const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-  if (!key) {
-    return <p className="text-sm text-stone-600">Falta VITE_CLERK_PUBLISHABLE_KEY.</p>;
-  }
-  return <EntrarGate />;
+function clerkMissing() {
+  return <p className="text-sm text-stone-600">Falta VITE_CLERK_PUBLISHABLE_KEY.</p>;
 }
 
-function EntrarGate() {
-  const { isLoaded, isSignedIn } = useAuth();
+export function Entrar() {
   const [params] = useSearchParams();
-  const next = params.get("next");
-  const after = next?.startsWith("/reservar/") ? next : "/academia";
+  const next = params.get("next") ?? "";
+  const player = next.match(/^\/reservar\/([^/]+)/);
+  if (player) return <Navigate to={`/entrar/jugador/${player[1]}`} replace />;
+  if (next.startsWith("/academia")) return <Navigate to="/entrar/academia" replace />;
+  return (
+    <div className="mx-auto max-w-md space-y-6 py-8">
+      <div>
+        <h1 className="text-2xl font-semibold">Entrar</h1>
+        <p className="mt-1 text-sm text-stone-600">Viborea sirve a academias. Cada una tiene sus jugadores.</p>
+      </div>
+      <Link
+        to="/entrar/jugador"
+        className="block rounded-md border border-stone-200 bg-white px-4 py-3 hover:border-stone-900"
+      >
+        <span className="block font-medium">Soy jugador</span>
+        <span className="mt-0.5 block text-sm text-stone-500">Entrá con el enlace de tu academia</span>
+      </Link>
+      <Link
+        to="/entrar/academia"
+        className="block rounded-md border border-stone-200 bg-white px-4 py-3 hover:border-stone-900"
+      >
+        <span className="block font-medium">Soy de la academia</span>
+        <span className="mt-0.5 block text-sm text-stone-500">Grilla, roster y cobro</span>
+      </Link>
+    </div>
+  );
+}
+
+export function EntrarAcademia() {
+  const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+  if (!key) return clerkMissing();
+  return <EntrarAcademiaGate />;
+}
+
+function EntrarAcademiaGate() {
+  const { isLoaded, isSignedIn } = useAuth();
   if (!isLoaded) return <p className="text-sm text-stone-500">Cargando…</p>;
-  if (isSignedIn) return <Navigate to={after} replace />;
+  if (isSignedIn) return <Navigate to="/academia" replace />;
   return (
     <div className="mx-auto max-w-md py-8">
-      <h1 className="mb-2 text-2xl font-semibold">Entrar</h1>
-      <p className="mb-6 text-sm text-stone-600">Academia o jugador, con la misma pantalla.</p>
-      <SignIn routing="hash" forceRedirectUrl={after} signUpUrl="/registro" />
+      <h1 className="mb-2 text-2xl font-semibold">Academia</h1>
+      <p className="mb-6 text-sm text-stone-600">Entrá para operar la grilla de tu academia.</p>
+      <SignIn routing="hash" forceRedirectUrl="/academia" signUpUrl="/registro" />
     </div>
   );
 }
 
 export function Registro() {
   const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-  if (!key) {
-    return <p className="text-sm text-stone-600">Falta VITE_CLERK_PUBLISHABLE_KEY.</p>;
-  }
+  if (!key) return clerkMissing();
   return (
     <div className="mx-auto max-w-md py-8">
       <h1 className="mb-2 text-2xl font-semibold">Registrar academia</h1>
       <p className="mb-6 text-sm text-stone-600">Después creás el espacio de tu academia.</p>
-      <SignUp routing="hash" forceRedirectUrl="/academia/nueva" />
+      <SignUp routing="hash" forceRedirectUrl="/academia/nueva" signInUrl="/entrar/academia" />
+    </div>
+  );
+}
+
+export function EntrarJugadorIndex() {
+  return (
+    <div className="mx-auto max-w-md space-y-4 py-8">
+      <h1 className="text-2xl font-semibold">Jugador</h1>
+      <p className="text-sm text-stone-600">
+        Entrá con el enlace que te dio tu academia. No publicamos un directorio de academias.
+      </p>
+      <Link to="/entrar" className="text-sm underline">
+        Volver
+      </Link>
+    </div>
+  );
+}
+
+export function EntrarJugador() {
+  const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+  const { slug } = useParams();
+  if (!key) return clerkMissing();
+  if (!slug) return <EntrarJugadorIndex />;
+  return <EntrarJugadorGate slug={slug} />;
+}
+
+function EntrarJugadorGate({ slug }: { slug: string }) {
+  const { isLoaded, isSignedIn } = useAuth();
+  const after = `/reservar/${slug}/clases`;
+  if (!isLoaded) return <p className="text-sm text-stone-500">Cargando…</p>;
+  if (isSignedIn) return <Navigate to={after} replace />;
+  return (
+    <div className="mx-auto max-w-md py-8">
+      <h1 className="mb-2 text-2xl font-semibold">Jugador</h1>
+      <p className="mb-6 text-sm text-stone-600">
+        Entrá para ver tus clases de esta academia en cualquier dispositivo. Podés reservar sin cuenta; este paso las
+        ata a vos.
+      </p>
+      <SignIn routing="hash" forceRedirectUrl={after} signUpUrl={`/entrar/jugador/${slug}/registro`} />
+    </div>
+  );
+}
+
+export function RegistroJugador() {
+  const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+  const { slug } = useParams();
+  if (!key) return clerkMissing();
+  if (!slug) return <Navigate to="/entrar/jugador" replace />;
+  const after = `/reservar/${slug}/clases`;
+  return (
+    <div className="mx-auto max-w-md py-8">
+      <h1 className="mb-2 text-2xl font-semibold">Crear cuenta de jugador</h1>
+      <p className="mb-6 text-sm text-stone-600">Queda ligada a esta academia, no a Viborea en general.</p>
+      <SignUp routing="hash" forceRedirectUrl={after} signInUrl={`/entrar/jugador/${slug}`} />
     </div>
   );
 }
@@ -273,11 +354,12 @@ export function ReservarSesion() {
 }
 
 function ReservarSesionAuthed() {
-  const { getToken } = useAuth();
+  const { getToken, isLoaded } = useAuth();
+  if (!isLoaded) return <p className="text-sm text-stone-500">Cargando…</p>;
   return <ReservarSesionForm getToken={getToken} />;
 }
 
-function ReservarSesionForm({ getToken }: { getToken: () => Promise<string | null> }) {
+function ReservarSesionForm({ getToken }: { getToken: (opts?: { skipCache?: boolean }) => Promise<string | null> }) {
   const { slug, sessionId } = useParams();
   const nav = useNavigate();
   const [name, setName] = useState("");
@@ -290,12 +372,19 @@ function ReservarSesionForm({ getToken }: { getToken: () => Promise<string | nul
   const [me, setMe] = useState<Student | null>(null);
   const [offerings, setOfferings] = useState<Offering[]>([]);
   const [offeringId, setOfferingId] = useState("");
+  const [coaches, setCoaches] = useState<Coach[]>([]);
   useEffect(() => {
     if (!slug || !sessionId) return;
     api.bookerSession(slug, sessionId).then((r) => setSession(r.session)).catch((e) => setMsg(e.message));
-    api.bookerCatalog(slug).then((c) => setOfferings(c.offerings.filter((o) => o.capacity === 1 || o.capacity === 4))).catch(() => undefined);
+    api
+      .bookerCatalog(slug)
+      .then((c) => {
+        setOfferings(c.offerings.filter((o) => o.capacity === 1 || o.capacity === 4));
+        setCoaches(c.coaches);
+      })
+      .catch(() => undefined);
     void (async () => {
-      const token = (await getToken()) ?? undefined;
+      const token = (await getToken({ skipCache: true })) ?? undefined;
       const r = await api.bookerMe(slug, token).catch(() => null);
       if (r?.student) {
         setMe(r.student);
@@ -321,7 +410,7 @@ function ReservarSesionForm({ getToken }: { getToken: () => Promise<string | nul
       return;
     }
     try {
-      const token = (await getToken()) ?? undefined;
+      const token = (await getToken({ skipCache: true })) ?? (await getToken()) ?? undefined;
       const r = await api.book(
         slug,
         { sessionId, name, phone: me?.phone ?? parsePhone(phone), offeringId: open ? offeringId : undefined },
@@ -338,6 +427,8 @@ function ReservarSesionForm({ getToken }: { getToken: () => Promise<string | nul
   const back = `/reservar/${slug}`;
   const open = session.source === "availability";
   const clase = open ? offerings.find((o) => o.id === offeringId)?.name ?? "Libre" : session.offering_name;
+  const coach = coaches.find((c) => c.id === session.coach_id);
+  const coachLangs = languageLabels(coach?.languages);
   const rows = [
     ["Día", formatDay(session.starts_at)],
     ["Hora", hhmm(session.starts_at)],
@@ -372,8 +463,11 @@ function ReservarSesionForm({ getToken }: { getToken: () => Promise<string | nul
           {wa ? (
             <p className="border-t border-stone-100 px-5 py-3 text-sm text-stone-600">Te escribimos por WhatsApp.</p>
           ) : null}
-          <div className="border-t border-stone-100 px-5 py-4">
-            <Button type="button" className="w-full" onClick={() => nav(back)}>
+          <div className="border-t border-stone-100 px-5 py-4 space-y-2">
+            <Button type="button" className="w-full" onClick={() => nav(`/reservar/${slug}/clases`)}>
+              Ver tus clases
+            </Button>
+            <Button type="button" variant="outline" className="w-full" onClick={() => nav(back)}>
               Otra clase
             </Button>
           </div>
@@ -389,6 +483,19 @@ function ReservarSesionForm({ getToken }: { getToken: () => Promise<string | nul
               {session.location_name}
               {session.court_name ? ` · ${session.court_name}` : ""} · {session.coach_name}
             </p>
+            {coach ? (
+              <div className="mt-3 flex items-start gap-3 border-t border-stone-100 pt-3">
+                <img
+                  src={coachPhoto(coach.id)}
+                  alt=""
+                  className="h-16 w-14 shrink-0 rounded-md bg-stone-100 object-cover object-top"
+                />
+                <div className="min-w-0">
+                  {coachLangs.length ? <p className="text-[11px] text-stone-500">{coachLangs.join(" · ")}</p> : null}
+                  {coach.bio ? <p className="mt-1 text-[11px] leading-snug text-stone-500">{coach.bio}</p> : null}
+                </div>
+              </div>
+            ) : null}
           </div>
           <form className="space-y-3" onSubmit={onSubmit}>
             {open ? (
@@ -432,7 +539,7 @@ function ReservarSesionForm({ getToken }: { getToken: () => Promise<string | nul
               <p className="text-sm text-red-700">
                 {msg}{" "}
                 {msg.includes("cuenta") && slug ? (
-                  <Link className="underline" to={`/entrar?next=/reservar/${slug}`}>
+                  <Link className="underline" to={`/entrar/jugador/${slug}`}>
                     Entrar
                   </Link>
                 ) : null}
@@ -684,7 +791,7 @@ const WEEKDAYS = [
 export function AcademiaProfes() {
   const { getToken } = useAuth();
   const [coachId, setCoachId] = useState("");
-  const [coaches, setCoaches] = useState<{ id: string; name: string }[]>([]);
+  const [coaches, setCoaches] = useState<Coach[]>([]);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [courts, setCourts] = useState<{ id: string; location_id: string; name: string }[]>([]);
   const [offerings, setOfferings] = useState<{ id: string; name: string }[]>([]);
@@ -727,6 +834,7 @@ export function AcademiaProfes() {
 
   const courtsHere = courts.filter((c) => c.location_id === locationId);
   const mine = templates.filter((t) => t.coach_id === coachId);
+  const selectedCoach = coaches.find((c) => c.id === coachId);
 
   async function addSlot(e: FormEvent) {
     e.preventDefault();
@@ -764,18 +872,28 @@ export function AcademiaProfes() {
         </div>
         <AcademiaNav />
         <div className="flex flex-wrap gap-3">
-          {coaches.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => setCoachId(c.id)}
-              className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm ${coachId === c.id ? "border-stone-900 bg-stone-900 text-white" : "border-stone-200 bg-white"}`}
-            >
-              <img src={coachPhoto(c.id)} alt="" className="h-7 w-7 rounded-full bg-stone-200 object-cover" />
-              {c.name}
-            </button>
-          ))}
+          {coaches.map((c) => {
+            const on = coachId === c.id;
+            const langs = languageLabels(c.languages);
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setCoachId(c.id)}
+                className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-left text-sm ${on ? "border-stone-900 bg-stone-900 text-white" : "border-stone-200 bg-white"}`}
+              >
+                <img src={coachPhoto(c.id)} alt="" className="h-7 w-7 rounded-full bg-stone-200 object-cover" />
+                <span>
+                  <span className="block">{c.name}</span>
+                  {langs.length ? (
+                    <span className={`block text-[10px] ${on ? "text-stone-300" : "text-stone-500"}`}>{langs.join(" · ")}</span>
+                  ) : null}
+                </span>
+              </button>
+            );
+          })}
         </div>
+        {selectedCoach?.bio ? <p className="text-sm text-stone-600">{selectedCoach.bio}</p> : null}
         {msg ? <p className="text-sm">{msg}</p> : null}
         <Card>
           <p className="mb-3 font-medium">Horarios fijos</p>

@@ -1,12 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import { OverlapError } from "./domain/types";
+import { handleApi } from "./api";
 import {
   academyById,
   activePack,
   addDays,
   bookStudent,
   buyPack,
+  catalogs,
   ClaimedFichaError,
+  listAcademies,
   createSession,
   ensureWeek,
   findOrCreateStudent,
@@ -112,6 +115,37 @@ describe.skipIf(!url)("cutoff por academia", () => {
   });
 });
 
+describe.skipIf(!url)("catalogo DG", () => {
+  it("Lomas tiene los 9 profes de la madre y Diego no se reserva", async () => {
+    const db = await openDb(url);
+    await ready(db);
+    const cat = await catalogs(db, DG_ACADEMY_ID);
+    expect(cat.coaches.some((c) => /diego/i.test(c.name))).toBe(false);
+    const lomas = cat.coaches.filter((c) => c.location_ids.includes("loc-costanera")).map((c) => c.id).sort();
+    expect(lomas).toEqual([
+      "coach-fernando-laval",
+      "coach-jose-mongelos",
+      "coach-mathias-fernandez",
+      "coach-matias-popovich",
+      "coach-pablo-recalde",
+      "coach-rodolfo-silva",
+      "coach-rodrigo-avila",
+      "coach-tati-enciso",
+      "coach-viani-alfonzo",
+    ]);
+    const elite = cat.coaches.filter((c) => c.location_ids.includes("loc-parque")).map((c) => c.id).sort();
+    expect(elite).toEqual(["coach-rodolfo-silva", "coach-sergio-gonzalez"]);
+    const academies = await listAcademies(db);
+    expect(academies.map((a) => a.slug).sort()).toEqual(expect.arrayContaining(["academiadg", "wpacademia"]));
+    expect(academies.find((a) => a.id === DG_ACADEMY_ID)?.name).toBe("Academia DG");
+    expect(academies.some((a) => /alameda/i.test(a.name))).toBe(false);
+    const me = await handleApi(new Request("http://localhost/api/a/academiadg/me"), db);
+    expect(me?.status).toBe(200);
+    expect(await me!.json()).toEqual({ student: null, bookings: [] });
+    await db.end();
+  });
+});
+
 describe.skipIf(!url)("aislamiento", () => {
   it("el mismo teléfono es dos fichas y la grilla no se mezcla", async () => {
     const db = await openDb(url);
@@ -126,9 +160,12 @@ describe.skipIf(!url)("aislamiento", () => {
     const wp = await weekSessions(db, WP_ACADEMY_ID, monday);
     expect(wp.every((s) => s.id.startsWith("occ-tpl-wp"))).toBe(true);
     expect(dg.some((s) => s.id.startsWith("occ-tpl-wp"))).toBe(false);
-    const coaches = await db`SELECT name FROM coaches WHERE academy_id = ${DG_ACADEMY_ID} ORDER BY name`;
+    const coaches = await db`SELECT name, bio, languages FROM coaches WHERE academy_id = ${DG_ACADEMY_ID} ORDER BY name`;
     expect((coaches as { name: string }[]).map((c) => c.name)).toContain("Fernando Laval");
     expect((coaches as { name: string }[]).map((c) => c.name)).not.toContain("Diego");
+    const tati = (coaches as { name: string; bio: string | null; languages: string[] }[]).find((c) => c.name === "Tati Enciso");
+    expect(tati?.languages).toEqual(["es", "gn"]);
+    expect(tati?.bio).toMatch(/guaraní/i);
     await db.end();
   });
 
@@ -181,6 +218,28 @@ describe.skipIf(!url)("aislamiento", () => {
     expect(claimed?.id).toBe(guest.id);
     expect(claimed?.clerk_user_id).toBe(clerkId);
     expect((await identifyPlayer(db, DG_ACADEMY_ID, { clerkUserId: clerkId }))?.id).toBe(guest.id);
+    await db.end();
+  });
+
+  it("publicBook con Clerk reclama la cookie guest aunque el teléfono sea otro", async () => {
+    const db = await openDb(url);
+    await ready(db);
+    const monday = addDays(mondayOf(new Date()), 7);
+    const holes = (await weekGrid(db, DG_ACADEMY_ID, monday)).filter((s) => s.source === "availability");
+    const a = holes[0];
+    const b = holes.find((s) => s.id !== a?.id);
+    expect(a && b).toBeTruthy();
+    const guestPhone = `+595987${Date.now().toString().slice(-6)}`;
+    const guest = await publicBook(db, DG_ACADEMY_ID, a!.id, "Ana Guest", guestPhone, { offeringId: "off-grupal" });
+    const clerkId = `user_book_claim_${Date.now()}`;
+    const signed = await publicBook(db, DG_ACADEMY_ID, b!.id, "Ana Clerk", `+595988${Date.now().toString().slice(-6)}`, {
+      offeringId: "off-grupal",
+      clerkUserId: clerkId,
+      cookieStudentId: guest.student.id,
+    });
+    expect(signed.student.id).toBe(guest.student.id);
+    expect(signed.student.clerk_user_id).toBe(clerkId);
+    expect((await identifyPlayer(db, DG_ACADEMY_ID, { clerkUserId: clerkId }))?.id).toBe(guest.student.id);
     await db.end();
   });
 });

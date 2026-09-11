@@ -8,18 +8,32 @@ const DOW = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"];
 const MONTH_SHORT = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
 const COACH_PHOTOS = new Set([
+  "coach-fernando-laval",
   "coach-jose-mongelos",
   "coach-mathias-fernandez",
+  "coach-matias-popovich",
   "coach-pablo-recalde",
   "coach-rodolfo-silva",
   "coach-rodrigo-avila",
   "coach-sergio-gonzalez",
+  "coach-tati-enciso",
   "coach-viani-alfonzo",
 ]);
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  es: "Español",
+  gn: "Guaraní",
+  pt: "Portugués",
+  en: "Inglés",
+};
 
 export function coachPhoto(id: string) {
   if (COACH_PHOTOS.has(id)) return `/coaches/${id}.webp`;
   return `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(id)}&backgroundColor=e7e5e4`;
+}
+
+export function languageLabels(codes: string[] | undefined) {
+  return (codes ?? []).map((code) => LANGUAGE_LABELS[code] ?? code);
 }
 
 function mondayISO(d = new Date()) {
@@ -93,9 +107,8 @@ function BookerGrid({ slug }: { slug: string }) {
   );
 
   const coachesHere = useMemo(() => {
-    const ids = new Set(atSede.map((s) => s.coach_id));
-    return coaches.filter((c) => ids.has(c.id));
-  }, [atSede, coaches]);
+    return coaches.filter((c) => (c.location_ids ?? []).includes(locationId));
+  }, [locationId, coaches]);
 
   useEffect(() => {
     if (coachId && coachId !== "" && !coachesHere.some((c) => c.id === coachId)) {
@@ -175,30 +188,50 @@ function BookerGrid({ slug }: { slug: string }) {
       {locationId ? (
         <section>
           <h2 className="text-lg font-semibold tracking-tight">Profe</h2>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <button type="button" onClick={() => setCoachId("")} className={cn(chip(coachId === ""), "flex items-center gap-3")}>
-              <span className="grid h-12 w-12 place-items-center rounded-full bg-stone-100 text-lg text-stone-500">*</span>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <button type="button" onClick={() => setCoachId("")} className={cn(chip(coachId === ""), "flex h-full items-start gap-3")}>
+              <span className="grid h-24 w-20 shrink-0 place-items-center rounded-md bg-stone-100 text-lg text-stone-500">*</span>
               <span>
                 <span className="block font-medium">Cualquier profe</span>
-                <span className={cn("block text-xs", coachId === "" ? "text-stone-300" : "text-stone-500")}>
+                <span className={cn("mt-0.5 block text-[11px]", coachId === "" ? "text-stone-300" : "text-stone-500")}>
                   Horarios de todos
                 </span>
               </span>
             </button>
-            {coachesHere.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setCoachId(c.id)}
-                className={cn(chip(coachId === c.id), "flex items-center gap-3")}
-              >
-                <img src={coachPhoto(c.id)} alt="" className="h-12 w-12 rounded-full bg-stone-100 object-cover" />
-                <span className="font-medium">{c.name}</span>
-              </button>
-            ))}
+            {coachesHere.map((c) => {
+              const langs = languageLabels(c.languages);
+              const on = coachId === c.id;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setCoachId(c.id)}
+                  className={cn(chip(on), "flex h-full items-start gap-3")}
+                >
+                  <img
+                    src={coachPhoto(c.id)}
+                    alt=""
+                    className="h-24 w-20 shrink-0 rounded-md bg-stone-100 object-cover object-top"
+                  />
+                  <span className="min-w-0">
+                    <span className="block font-medium">{c.name}</span>
+                    {langs.length ? (
+                      <span className={cn("mt-0.5 block text-[11px]", on ? "text-stone-300" : "text-stone-500")}>
+                        {langs.join(" · ")}
+                      </span>
+                    ) : null}
+                    {c.bio ? (
+                      <span className={cn("mt-1.5 block text-[11px] leading-snug line-clamp-4", on ? "text-stone-300" : "text-stone-500")}>
+                        {c.bio}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              );
+            })}
           </div>
           {coachesHere.length === 0 ? (
-            <p className="mt-3 text-sm text-stone-500">Esta semana no hay clases en esta sede.</p>
+            <p className="mt-3 text-sm text-stone-500">No hay profes asignados a esta sede.</p>
           ) : null}
         </section>
       ) : null}
@@ -214,6 +247,13 @@ function BookerGrid({ slug }: { slug: string }) {
               ›
             </button>
           </div>
+          {slots.length === 0 ? (
+            <p className="mb-4 text-sm text-stone-500">
+              Esta semana no quedan horarios
+              {coachId && coachId !== "" ? ` con ${coachesHere.find((c) => c.id === coachId)?.name ?? "este profe"}` : " en esta sede"}.
+              Probá la semana siguiente.
+            </p>
+          ) : null}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
             {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
               const dayIso = addDays(monday, offset).toISOString().slice(0, 10);
@@ -276,76 +316,106 @@ function PlayerPanel({
   signedIn,
 }: {
   slug: string;
-  getToken: () => Promise<string | null>;
+  getToken: (opts?: { skipCache?: boolean }) => Promise<string | null>;
   signedIn: boolean;
 }) {
   const [student, setStudent] = useState<Student | null>(null);
   const [bookings, setBookings] = useState<HistoryBooking[]>([]);
+  const [academyName, setAcademyName] = useState("");
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     void (async () => {
-      const token = (await getToken()) ?? undefined;
-      const r = await api.bookerMe(slug, token).catch(() => ({ student: null, bookings: [] as HistoryBooking[] }));
-      setStudent(r.student);
-      setBookings(r.bookings);
+      setLoaded(false);
+      const token = (await getToken({ skipCache: true })) ?? undefined;
+      const [me, cat] = await Promise.all([
+        api.bookerMe(slug, token).catch(() => ({ student: null, bookings: [] as HistoryBooking[] })),
+        api.bookerCatalog(slug).catch(() => null),
+      ]);
+      setStudent(me.student);
+      setBookings(me.bookings);
+      if (cat?.name) setAcademyName(cat.name);
       setLoaded(true);
     })();
-  }, [slug, getToken]);
-  if (!loaded) return null;
+  }, [slug, getToken, signedIn]);
+  if (!loaded) return <p className="text-sm text-stone-500">Cargando…</p>;
   const now = Date.now();
   const upcoming = bookings.filter((b) => new Date(b.starts_at).getTime() >= now && b.status !== "cancelled");
   const past = bookings.filter((b) => new Date(b.starts_at).getTime() < now || b.status === "cancelled");
   return (
-    <section className="rounded-md border border-stone-200 bg-white p-5">
-      {student ? (
-        <>
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <h2 className="text-lg font-semibold">Tus clases</h2>
-              <p className="text-sm text-stone-600">{student.name}</p>
-            </div>
-          </div>
-          {bookings.length === 0 ? (
-            <p className="mt-3 text-sm text-stone-500">Todavía no reservaste. Elegí sede y horario abajo.</p>
-          ) : (
-            <div className="mt-4 space-y-4">
-              {upcoming.length ? (
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-stone-400">Próximas</p>
-                  <ul className="mt-2 divide-y">
-                    {upcoming.map((b) => (
-                      <HistoryRow key={b.id} b={b} />
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              {past.length ? (
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-stone-400">Anteriores</p>
-                  <ul className="mt-2 divide-y">
-                    {past.map((b) => (
-                      <HistoryRow key={b.id} b={b} />
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
-          )}
-        </>
-      ) : signedIn ? (
-        <p className="text-sm text-stone-600">Esta cuenta no tiene reservas de jugador en esta academia.</p>
-      ) : (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-stone-600">Entrá para ver tus reservas con cada profe.</p>
+    <div className="space-y-6">
+      <div>
+        <p className="text-sm font-medium text-stone-500">{academyName || slug}</p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Tus clases</h1>
+        {student ? (
+          <p className="mt-1 text-sm text-stone-600">
+            {student.name}
+            {student.phone ? ` · ${student.phone}` : ""}
+          </p>
+        ) : null}
+      </div>
+
+      {student && !signedIn ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-stone-200 bg-white px-4 py-3 text-sm">
+          <p className="text-stone-600">Estas reservas están en este dispositivo. Entrá para verlas en cualquier teléfono.</p>
           <Link
-            to={`/entrar?next=/reservar/${slug}`}
-            className="inline-flex h-9 items-center rounded-lg bg-stone-900 px-3 text-sm font-medium text-white"
+            to={`/entrar/jugador/${slug}`}
+            className="inline-flex h-9 shrink-0 items-center rounded-lg bg-stone-900 px-3 font-medium text-white"
           >
             Entrar
           </Link>
         </div>
-      )}
-    </section>
+      ) : null}
+
+      {!student && signedIn ? (
+        <div className="rounded-md border border-stone-200 bg-white px-4 py-3 text-sm text-stone-600">
+          Esta cuenta no tiene ficha en {academyName || "esta academia"}. Reservá una clase (nombre y teléfono) y queda
+          ligada a vos.
+        </div>
+      ) : null}
+
+      {!student && !signedIn ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-stone-200 bg-white px-4 py-3 text-sm">
+          <p className="text-stone-600">Podés reservar sin cuenta. Entrá si ya reservaste en otro dispositivo.</p>
+          <Link
+            to={`/entrar/jugador/${slug}`}
+            className="inline-flex h-9 shrink-0 items-center rounded-lg bg-stone-900 px-3 font-medium text-white"
+          >
+            Entrar
+          </Link>
+        </div>
+      ) : null}
+
+      {student && bookings.length === 0 ? (
+        <p className="text-sm text-stone-500">
+          Todavía no hay clases.{" "}
+          <Link to={`/reservar/${slug}`} className="underline">
+            Reservar
+          </Link>
+        </p>
+      ) : null}
+
+      {upcoming.length ? (
+        <section className="rounded-md border border-stone-200 bg-white p-5">
+          <p className="text-xs font-medium uppercase tracking-wide text-stone-400">Próximas</p>
+          <ul className="mt-2 divide-y">
+            {upcoming.map((b) => (
+              <HistoryRow key={b.id} b={b} />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {past.length ? (
+        <section className="rounded-md border border-stone-200 bg-white p-5">
+          <p className="text-xs font-medium uppercase tracking-wide text-stone-400">Anteriores</p>
+          <ul className="mt-2 divide-y">
+            {past.map((b) => (
+              <HistoryRow key={b.id} b={b} />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
   );
 }
 
@@ -365,7 +435,8 @@ function HistoryRow({ b }: { b: HistoryBooking }) {
 }
 
 function PlayerPanelAuthed({ slug }: { slug: string }) {
-  const { getToken, isSignedIn } = useAuth();
+  const { getToken, isSignedIn, isLoaded } = useAuth();
+  if (!isLoaded) return <p className="text-sm text-stone-500">Cargando…</p>;
   return <PlayerPanel slug={slug} getToken={getToken} signedIn={Boolean(isSignedIn)} />;
 }
 
@@ -383,7 +454,7 @@ export function Booker({ slug, view = "reservar" }: { slug: string; view?: "rese
     <div className="space-y-6">
       <nav className="flex gap-1">
         {tab(`/reservar/${slug}`, "Reservar", view === "reservar")}
-        {tab(`/reservar/${slug}/clases`, "Mis clases", view === "clases")}
+        {tab(`/reservar/${slug}/clases`, "Tus clases", view === "clases")}
       </nav>
       {view === "clases" ? (
         key ? <PlayerPanelAuthed slug={slug} /> : <PlayerPanel slug={slug} getToken={async () => null} signedIn={false} />

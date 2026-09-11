@@ -141,7 +141,7 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 2. Clerk wraps the app only if `VITE_CLERK_PUBLISHABLE_KEY` is set. Do not call `useAuth` without `ClerkProvider` — split gated components (`ClerkGate`).
 3. Booker lists real `/api/a/:slug/week` sessions (court + coach + cupos). No `placeholders.ts` occupancy in the SPA.
 4. Academia: week + optional coach filter + roster + pagado/pendiente. Staff APIs send Clerk JWT.
-5. Historial del jugador vive en el booker, no en `/jugador`.
+5. Área del jugador: `/reservar/:slug/clases`. Entrar jugador `/entrar/jugador/:slug` (no activa org). Entrar academia `/entrar/academia`. No revivir `/jugador` as a third shell.
 6. Build: `cd web && bun run build`. Image copies `web/dist` to `/web/dist`.
 
 **Files:** `web/src/*`, `web/vite.config.ts`, `web/index.html`

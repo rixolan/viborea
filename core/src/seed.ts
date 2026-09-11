@@ -8,17 +8,75 @@ const L = "loc-costanera";
 const E = "loc-parque";
 const R = "loc-ribera";
 
-export const DG_COACHES: [string, string][] = [
-  ["coach-fernando-laval", "Fernando Laval"],
-  ["coach-pablo-recalde", "Pablo Recalde"],
-  ["coach-rodolfo-silva", "Rodolfo Silva"],
-  ["coach-sergio-gonzalez", "Sergio González"],
-  ["coach-viani-alfonzo", "Viani Alfonzo"],
-  ["coach-jose-mongelos", "Jose Mongelos"],
-  ["coach-tati-enciso", "Tati Enciso"],
-  ["coach-matias-popovich", "Matias Popovich"],
-  ["coach-rodrigo-avila", "Rodrigo Avila"],
-  ["coach-mathias-fernandez", "Mathias Fernandez"],
+export type DgCoach = {
+  id: string;
+  name: string;
+  bio: string | null;
+  languages: string[];
+};
+
+/** Bios and languages from PROFESACADEMIADG (2026-09-11). Rodolfo and Rodrigo have no bio in that roster. */
+export const DG_COACHES: DgCoach[] = [
+  {
+    id: "coach-fernando-laval",
+    name: "Fernando Laval",
+    languages: ["es"],
+    bio: "Fernando trae la experiencia competitiva a la clase. Combina técnica y estrategia, adaptándose a lo que cada alumno necesita para que entienda el juego, potencie sus fortalezas y tome mejores decisiones dentro de la pista.",
+  },
+  {
+    id: "coach-pablo-recalde",
+    name: "Pablo Recalde",
+    languages: ["es"],
+    bio: "Pablo busca conceptos que el alumno entienda de verdad y que además le resulten divertidos. Su clase apuesta a que se pruebe, se falle y se aprenda.",
+  },
+  {
+    id: "coach-rodolfo-silva",
+    name: "Rodolfo Silva",
+    languages: ["es"],
+    bio: null,
+  },
+  {
+    id: "coach-sergio-gonzalez",
+    name: "Sergio González",
+    languages: ["es", "en", "pt"],
+    bio: "La clase de Checho arranca por entender: primero el concepto, después la práctica con ejemplos concretos. Se defiende en inglés y portugués para quienes lo necesiten.",
+  },
+  {
+    id: "coach-viani-alfonzo",
+    name: "Viani Alfonzo",
+    languages: ["es"],
+    bio: "Viani trabaja con un enfoque funcional: cada ejercicio tiene un para qué. Su clase busca que el alumno gane herramientas concretas, no movimientos sueltos.",
+  },
+  {
+    id: "coach-jose-mongelos",
+    name: "Jose Mongelos",
+    languages: ["es"],
+    bio: "José enseña de forma dinámica, divertida y paciente. Mantiene el ritmo alto sin perder la calma con quienes recién empiezan, y hace que la clase se pase rápido.",
+  },
+  {
+    id: "coach-tati-enciso",
+    name: "Tati Enciso",
+    languages: ["es", "gn"],
+    bio: "Tati enseña con un estilo didáctico: explicar bien, paso a paso, hasta que salga. Atiende en español y en guaraní.",
+  },
+  {
+    id: "coach-matias-popovich",
+    name: "Matias Popovich",
+    languages: ["es", "pt"],
+    bio: "El fuerte de Matías es la táctica: entender la cancha antes que pegarle fuerte. Enseña a leer el punto y decidir mejor.",
+  },
+  {
+    id: "coach-rodrigo-avila",
+    name: "Rodrigo Avila",
+    languages: ["es"],
+    bio: null,
+  },
+  {
+    id: "coach-mathias-fernandez",
+    name: "Mathias Fernandez",
+    languages: ["es"],
+    bio: "Mathias apuesta a la lógica y a la claridad: que el concepto se entienda para que el juego salga simple y práctico. Nada de complicar lo que puede ser sencillo.",
+  },
 ];
 
 /** Contiguous presence blocks from PROFESHORARIOSSEDESMADRE 2026-09-09. */
@@ -172,8 +230,8 @@ export async function seedIfEmpty(db: Db): Promise<void> {
       await tx`INSERT INTO courts (id, academy_id, location_id, name, number) VALUES (${id}, ${academyId}, ${locationId}, ${name}, ${number})`;
     }
 
-    for (const [id, name] of DG_COACHES) {
-      await tx`INSERT INTO coaches (id, academy_id, name) VALUES (${id}, ${DG_ACADEMY_ID}, ${name})`;
+    for (const c of DG_COACHES) {
+      await upsertDgCoach(tx, c);
     }
     await tx`INSERT INTO coaches (id, academy_id, name) VALUES ('coach-wp-1', ${WP_ACADEMY_ID}, 'Profe WP')`;
 
@@ -214,8 +272,14 @@ async function insertAvailability(tx: Db): Promise<void> {
   }
 }
 
+async function upsertDgCoach(tx: Db, c: DgCoach): Promise<void> {
+  await tx`INSERT INTO coaches (id, academy_id, name, bio, languages)
+    VALUES (${c.id}, ${DG_ACADEMY_ID}, ${c.name}, ${c.bio}, ${c.languages})
+    ON CONFLICT (id) DO UPDATE SET name = ${c.name}, bio = ${c.bio}, languages = ${c.languages}`;
+}
+
 export async function replaceDgRoster(db: Db): Promise<void> {
-  const ids = DG_COACHES.map(([id]) => id);
+  const ids = DG_COACHES.map((c) => c.id);
   await db.begin(async (tx) => {
     await tx`DELETE FROM bookings WHERE session_id IN (
       SELECT id FROM sessions WHERE academy_id = ${DG_ACADEMY_ID} AND NOT (coach_id = ANY(${ids}))
@@ -225,15 +289,16 @@ export async function replaceDgRoster(db: Db): Promise<void> {
     await tx`DELETE FROM coach_availability WHERE academy_id = ${DG_ACADEMY_ID}`;
     await tx`DELETE FROM coaches WHERE academy_id = ${DG_ACADEMY_ID} AND NOT (id = ANY(${ids}))`;
     await tx`DELETE FROM offerings WHERE id = 'off-dual'`;
-    for (const [id, name] of DG_COACHES) {
-      await tx`INSERT INTO coaches (id, academy_id, name) VALUES (${id}, ${DG_ACADEMY_ID}, ${name})
-        ON CONFLICT (id) DO UPDATE SET name = ${name}`;
+    for (const c of DG_COACHES) {
+      await upsertDgCoach(tx, c);
     }
     await insertAvailability(tx);
   });
 }
 
 export async function alignCatalog(db: Db): Promise<void> {
+  await db`UPDATE academy SET name = ${"Academia DG"} WHERE id = ${DG_ACADEMY_ID}`;
+  await db`UPDATE academy SET name = ${"WP Academia"} WHERE id = ${WP_ACADEMY_ID}`;
   await db`UPDATE locations SET
     name = 'Lomas Padel',
     address = 'Av. Dr. Felipe Molas López Esquina, Asunción',

@@ -38,7 +38,7 @@ Product name: **Viborea**. Metaphor (the padel shot *bandeja*) may appear in dom
 
 Copy: castellano. Schema: English. `court` → pista (es-ES default) / cancha (es-AR, es-PY) in i18n, not in SQL.
 
-**Two product areas:** booker público (`/reservar/:slug`) and Academia (`/academia`). Coach is a filter inside Academia, not a third app. `/jugador` and `/cliente` redirect to `/`.
+**Two product areas:** booker público (`/reservar/:slug`) and Academia (`/academia`). The player home of an academia is `/reservar/:slug/clases` (upcoming / past), not a third shell. `/entrar/jugador/:slug` vs `/entrar/academia`. Coach is a filter inside Academia. `/jugador` → `/entrar/jugador`. `/cliente` → `/`.
 
 ## Stack (the product)
 
@@ -72,7 +72,7 @@ core/src/server.ts   Bun.serve: API, SPA, leftover HTML, 60s reminder tick
 core/src/notify/     WhatsApp Cloud API sandbox (`WHATSAPP_TEST_*`)
 core/src/seed.ts     demo academy if empty; `alignCatalog` replaces DG roster
 web/src/             React SPA (landing, reservar, academia)
-web/public/coaches/  seven `{coach_id}.webp` portraits
+web/public/coaches/  ten `{coach_id}.webp` portraits
 compose.yaml         db + app, network `viborea`, volume `viborea_pgdata`
 Dockerfile           SPA build + Bun
 workers/chatwoot-agent-bot/   WhatsApp menu via Chatwoot AgentBot (sandbox only)
@@ -95,7 +95,7 @@ supabase/            Tandava migrations. Not the product DB.
 - 24h reminder: occupying booking with `reminded_at` null and `starts_at` within 24h → WhatsApp + manage link. Tick in `server.ts`.
 - Money: integer minor units + `currency`. Never assume Gs. or Stripe.
 - Pack consume: same moment Tandava already used (confirm covered booking), not a third moment.
-- Player identity: Clerk JWT wins; a player **without org** may claim the guest cookie. Staff JWT must not inherit another student’s cookie.
+- Player identity on the booker: linked `clerk_user_id` wins; otherwise the guest cookie (`vb_p_<slug>`) is the ficha, and a signed-in Clerk user (staff org included) may claim that unclaimed cookie. Staff routes (`/api/week`, …) never read the player cookie. Do not clear the player cookie just because `/me` has a Clerk JWT without a ficha.
 
 Code: `core/src/domain/overlap.ts`, `capacity.ts`, `template.ts`, `cutoff.ts`, `pack.ts`, `availability.ts`. Tests: `core/src/domain/*.test.ts`, `core/src/db.test.ts`.
 
@@ -106,7 +106,7 @@ JSON (SPA):
 | Method | Path | Role |
 |---|---|---|
 | GET | `/api/health` | liveness (`{"ok":true}`) |
-| GET | `/api/booker` | `{slug}` if exactly one academy |
+| GET | `/api/booker` | `{slug}` if exactly one academy. Never a list of academies. |
 | GET | `/api/a/:slug/catalog` | public locations/coaches |
 | GET | `/api/a/:slug/week?monday=` | public booker week (holes + locked) |
 | POST | `/api/a/:slug/book` | public book; sets player cookie; WhatsApp if configured |
@@ -118,11 +118,11 @@ JSON (SPA):
 | GET | `/api/sessions/:id` | staff session + roster |
 | POST | `/api/bookings/:id/status` | academia marks paid / pending |
 
-SPA: `/`, `/entrar`, `/reservar`, `/reservar/:slug`, `/reservar/:slug/clases`, `/reservar/:slug/turno/:token`, `/reservar/:slug/:sessionId`, `/academia`, `/academia/sesion/:id`. `/jugador` → `/`.
+SPA: `/`, `/entrar`, `/entrar/academia`, `/entrar/jugador`, `/entrar/jugador/:slug`, `/registro`, `/reservar/:slug`, `/reservar/:slug/clases` (player home), `/reservar/:slug/turno/:token`, `/reservar/:slug/:sessionId`, `/academia`. `/jugador` → `/entrar/jugador`.
 
 If `web/dist` exists, GET (except `/piloto`) serves the SPA. Leftover HTML in `core/src/html.ts` is fallback. Do not add new HTML pages; add React + `/api`.
 
-Coach portraits: `web/public/coaches/{coach_id}.webp` → `/coaches/…`. Not Postgres, not R2.
+Coach portraits: `web/public/coaches/{coach_id}.webp` → `/coaches/…`. Not Postgres, not R2. Bio and spoken languages live on `coaches` (`bio`, `languages` ISO 639-1) and come out of `/api/a/:slug/catalog`.
 
 ## Data
 - Schema: `core/src/db/schema.sql`. Additive changes: new id in `core/src/db/migrate.ts`.
@@ -168,6 +168,7 @@ Coach portraits: `web/public/coaches/{coach_id}.webp` → `/coaches/…`. Not Po
 | Visible copy / areas | `web/src/pages.tsx`, `shell.tsx`, `App.tsx` |
 | Seed catalog / DG roster | `core/src/seed.ts` |
 | Coach portraits | `web/public/coaches/{id}.webp` + `COACH_PHOTOS` in `web/src/booker.tsx` |
+| Coach bio / languages | `coaches.bio`, `coaches.languages` via `core/src/seed.ts` (`alignCatalog`) |
 | Compose / Traefik | `compose.yaml` (network name must match live Docker network) |
 | WhatsApp send / reminders | `core/src/notify/whatsapp.ts`, `server.ts` tick, Doppler `viborea/dev` |
 | WhatsApp menu (sandbox) | `workers/chatwoot-agent-bot/` |

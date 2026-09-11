@@ -29,7 +29,9 @@ CREATE TABLE courts (
 CREATE TABLE coaches (
   id TEXT PRIMARY KEY,
   academy_id TEXT NOT NULL REFERENCES academy(id),
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  bio TEXT,
+  languages TEXT[] NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE offerings (
