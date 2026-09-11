@@ -26,7 +26,7 @@ export function RequireAcademia({ children }: { children: ReactNode }) {
 }
 
 function OrgGate({ children }: { children: ReactNode }) {
-  const { user, isLoaded: userLoaded } = useUser();
+  const { isLoaded: userLoaded } = useUser();
   const { organization, isLoaded } = useOrganization();
   const { isLoaded: listLoaded, userMemberships, setActive } = useOrganizationList({
     userMemberships: true,
@@ -39,7 +39,6 @@ function OrgGate({ children }: { children: ReactNode }) {
   }, [listLoaded, organization, setActive, userMemberships.data]);
 
   if (!userLoaded || !isLoaded || !listLoaded) return <p className="text-sm text-stone-500">Cargando…</p>;
-  if (user?.publicMetadata?.role === "academia") return children;
   if (!organization && (userMemberships.data?.length ?? 0) === 0) {
     return (
       <div className="mx-auto max-w-md space-y-3 py-8">
