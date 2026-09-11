@@ -348,18 +348,24 @@ function formatDay(iso: string) {
 
 export function ReservarSesion() {
   if (!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) {
-    return <ReservarSesionForm getToken={async () => null} />;
+    return <ReservarSesionForm getToken={async () => null} signedIn={false} />;
   }
   return <ReservarSesionAuthed />;
 }
 
 function ReservarSesionAuthed() {
-  const { getToken, isLoaded } = useAuth();
+  const { getToken, isLoaded, isSignedIn } = useAuth();
   if (!isLoaded) return <p className="text-sm text-stone-500">Cargando…</p>;
-  return <ReservarSesionForm getToken={getToken} />;
+  return <ReservarSesionForm getToken={getToken} signedIn={Boolean(isSignedIn)} />;
 }
 
-function ReservarSesionForm({ getToken }: { getToken: (opts?: { skipCache?: boolean }) => Promise<string | null> }) {
+function ReservarSesionForm({
+  getToken,
+  signedIn,
+}: {
+  getToken: (opts?: { skipCache?: boolean }) => Promise<string | null>;
+  signedIn: boolean;
+}) {
   const { slug, sessionId } = useParams();
   const nav = useNavigate();
   const [name, setName] = useState("");
@@ -373,6 +379,7 @@ function ReservarSesionForm({ getToken }: { getToken: (opts?: { skipCache?: bool
   const [offerings, setOfferings] = useState<Offering[]>([]);
   const [offeringId, setOfferingId] = useState("");
   const [coaches, setCoaches] = useState<Coach[]>([]);
+  const [meReady, setMeReady] = useState(!signedIn);
   useEffect(() => {
     if (!slug || !sessionId) return;
     api.bookerSession(slug, sessionId).then((r) => setSession(r.session)).catch((e) => setMsg(e.message));
@@ -384,6 +391,7 @@ function ReservarSesionForm({ getToken }: { getToken: (opts?: { skipCache?: bool
       })
       .catch(() => undefined);
     void (async () => {
+      setMeReady(!signedIn);
       const token = (await getToken({ skipCache: true })) ?? undefined;
       const r = await api.bookerMe(slug, token).catch(() => null);
       if (r?.student) {
@@ -391,8 +399,9 @@ function ReservarSesionForm({ getToken }: { getToken: (opts?: { skipCache?: bool
         setName(r.student.name);
         setPhone(r.student.phone);
       }
+      setMeReady(true);
     })();
-  }, [slug, sessionId, getToken]);
+  }, [slug, sessionId, getToken, signedIn]);
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!slug || !sessionId) return;
@@ -420,7 +429,8 @@ function ReservarSesionForm({ getToken }: { getToken: (opts?: { skipCache?: bool
       setWa(Boolean(r.whatsapp_ok && r.whatsapp !== "dry-run"));
       setDone(true);
     } catch (err) {
-      setMsg(err instanceof Error ? err.message : "Error");
+      const raw = err instanceof Error ? err.message : "Error";
+      setMsg(signedIn && /ficha tiene cuenta/i.test(raw) ? "Ese teléfono ya está ligado a otra cuenta." : raw);
     }
   }
   if (!session) return <p className="text-sm text-stone-500">{msg ?? "Cargando…"}</p>;
@@ -514,17 +524,31 @@ function ReservarSesionForm({ getToken }: { getToken: (opts?: { skipCache?: bool
             ) : (
               <p className="text-sm text-stone-500">{session.offering_name}</p>
             )}
-            {me ? (
+            {!meReady ? (
+              <p className="text-sm text-stone-500">Cargando tu ficha…</p>
+            ) : me ? (
               <p className="text-sm text-stone-600">
-                {me.name} · {me.phone}
+                Reservás como {me.name} · {me.phone}
               </p>
             ) : (
               <>
-                <label className="block text-sm">
+                {signedIn ? (
+                  <p className="text-sm text-stone-600">Primera reserva de esta cuenta: nombre y WhatsApp de la ficha.</p>
+                ) : null}
+                <label className="block text-sm" htmlFor="name">
                   Nombre
-                  <Input value={name} onChange={(e) => setName(e.target.value)} required />
+                  <Input
+                    id="name"
+                    name="name"
+                    type="text"
+                    autoComplete="name"
+                    autoCapitalize="words"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
                 </label>
-                <label className="block text-sm">
+                <label className="block text-sm" htmlFor="phone">
                   Teléfono
                   <div className="mt-1">
                     <PhoneField value={phone} onChange={setPhone} />
@@ -532,13 +556,13 @@ function ReservarSesionForm({ getToken }: { getToken: (opts?: { skipCache?: bool
                 </label>
               </>
             )}
-            <Button type="submit" className="w-full" disabled={!me && Boolean(phoneIssue(phone))}>
+            <Button type="submit" className="w-full" disabled={!meReady || (!me && Boolean(phoneIssue(phone)))}>
               Reservar
             </Button>
             {msg ? (
               <p className="text-sm text-red-700">
                 {msg}{" "}
-                {msg.includes("cuenta") && slug ? (
+                {msg.includes("cuenta") && slug && !signedIn ? (
                   <Link className="underline" to={`/entrar/jugador/${slug}`}>
                     Entrar
                   </Link>

@@ -38,6 +38,15 @@ export function PhoneField({
   const country = COUNTRIES.find((c) => c.iso2 === iso2) ?? COUNTRIES.find((c) => c.iso2 === "py")!;
 
   useEffect(() => {
+    const digits = value.replace(/\D/g, "");
+    const match = [...COUNTRIES]
+      .sort((a, b) => b.dialCode.length - a.dialCode.length)
+      .find((c) => digits.startsWith(c.dialCode) && digits.length > c.dialCode.length);
+    if (match) setIso2(match.iso2);
+  }, [value]);
+
+  useEffect(() => {
+    if (/\d{6,}/.test(value)) return;
     const ac = new AbortController();
     fetch("https://ipwho.is/?fields=country_code", { signal: ac.signal })
       .then((r) => r.json())
@@ -46,7 +55,7 @@ export function PhoneField({
       })
       .catch(() => undefined);
     return () => ac.abort();
-  }, []);
+  }, [value]);
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -81,8 +90,24 @@ export function PhoneField({
     onChange(rest ? `+${next.dialCode}${rest}` : `+${next.dialCode}`);
   }
 
+  function applyInternational(raw: string) {
+    const digits = raw.replace(/\D/g, "");
+    if (!digits) {
+      onChange(`+${country.dialCode}`);
+      return;
+    }
+    const match = [...COUNTRIES].sort((a, b) => b.dialCode.length - a.dialCode.length).find((c) => digits.startsWith(c.dialCode));
+    if (match) setIso2(match.iso2);
+    onChange(`+${digits}`);
+  }
+
   function onNational(raw: string) {
-    const rest = raw.replace(/\D/g, "");
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("+") || trimmed.startsWith("00")) {
+      applyInternational(trimmed);
+      return;
+    }
+    const rest = trimmed.replace(/\D/g, "");
     onChange(rest ? `+${country.dialCode}${rest}` : `+${country.dialCode}`);
   }
 
@@ -106,12 +131,19 @@ export function PhoneField({
           <span className="text-stone-600">+{country.dialCode}</span>
         </button>
         <input
+          id="phone"
+          name="phone"
+          type="tel"
           className="h-10 min-w-0 flex-1 px-3 text-sm outline-none"
           inputMode="tel"
-          autoComplete="tel-national"
+          autoComplete="tel"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           value={national}
           onChange={(e) => onNational(e.target.value)}
           placeholder="981 123 456"
+          aria-label="Teléfono"
           aria-invalid={Boolean(bad)}
         />
         {open ? (
