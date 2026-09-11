@@ -95,7 +95,7 @@ supabase/            Tandava migrations. Not the product DB.
 - 24h reminder: occupying booking with `reminded_at` null and `starts_at` within 24h → WhatsApp + manage link. Tick in `server.ts`.
 - Money: integer minor units + `currency`. Never assume Gs. or Stripe.
 - Pack consume: same moment Tandava already used (confirm covered booking), not a third moment.
-- Player identity on the booker: linked `clerk_user_id` wins; otherwise the guest cookie (`vb_p_<slug>`) is the ficha, and a signed-in Clerk user (staff org included) may claim that unclaimed cookie. Staff routes (`/api/week`, …) never read the player cookie. Do not clear the player cookie just because `/me` has a Clerk JWT without a ficha. Clerk player signup collects first name and phone; confirmation shows those (edit in Clerk profile) instead of asking again. Guest booker still asks name + WhatsApp.
+- Player identity on the booker: linked `clerk_user_id` wins; otherwise the guest cookie (`vb_p_<slug>`) is the ficha, and a signed-in Clerk user (staff org included) may claim that unclaimed cookie. Staff routes (`/api/week`, …) never read the player cookie. Do not clear the player cookie just because `/me` has a Clerk JWT without a ficha. Clerk native phone is off (Paraguay is unsupported). WhatsApp lives in Clerk `unsafe_metadata.whatsapp` and is collected on first reserve. Guest booker still asks name + WhatsApp.
 
 Code: `core/src/domain/overlap.ts`, `capacity.ts`, `template.ts`, `cutoff.ts`, `pack.ts`, `availability.ts`. Tests: `core/src/domain/*.test.ts`, `core/src/db.test.ts`.
 

@@ -12,13 +12,22 @@ describe("accountContact", () => {
     ).toEqual({ name: "Ana Pérez", phone: "+595981123456" });
   });
 
-  it("cae al fullName y al primer teléfono de la lista", () => {
+  it("cae al fullName y al WhatsApp en metadata", () => {
     expect(
       accountContact({
         fullName: "Ana Pérez",
-        phoneNumbers: [{ phoneNumber: "+595981123456" }],
+        unsafeMetadata: { whatsapp: "+595981123456" },
       }),
     ).toEqual({ name: "Ana Pérez", phone: "+595981123456" });
+  });
+
+  it("cae al primer teléfono de Clerk si no hay metadata", () => {
+    expect(
+      accountContact({
+        fullName: "Ana Pérez",
+        phoneNumbers: [{ phoneNumber: "+15551234567" }],
+      }),
+    ).toEqual({ name: "Ana Pérez", phone: "+15551234567" });
   });
 
   it("null si no hay datos", () => {

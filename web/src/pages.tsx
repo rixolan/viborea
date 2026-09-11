@@ -157,7 +157,7 @@ export function RegistroJugador() {
     <div className="mx-auto max-w-md py-8">
       <h1 className="mb-2 text-2xl font-semibold">Crear cuenta de jugador</h1>
       <p className="mb-6 text-sm text-stone-600">
-        Nombre y WhatsApp quedan en tu cuenta. Al reservar los usamos; si hay que cambiarlos, se editan ahí.
+        El correo es tu entrada. El WhatsApp lo cargás en la primera reserva: Clerk no admite números de Paraguay.
       </p>
       <SignUp routing="hash" forceRedirectUrl={after} signInUrl={`/entrar/jugador/${slug}`} appearance={clerkFields} />
     </div>
@@ -368,7 +368,16 @@ function ReservarSesionAuthed() {
       getToken={getToken}
       signedIn={Boolean(isSignedIn)}
       account={accountContact(user)}
-      onEditAccount={() => openUserProfile()}
+      onEditName={() => openUserProfile()}
+      onSaveWhatsapp={
+        user
+          ? async (whatsapp) => {
+              await user.update({
+                unsafeMetadata: { ...user.unsafeMetadata, whatsapp },
+              });
+            }
+          : undefined
+      }
     />
   );
 }
@@ -377,12 +386,14 @@ function ReservarSesionForm({
   getToken,
   signedIn,
   account,
-  onEditAccount,
+  onEditName,
+  onSaveWhatsapp,
 }: {
   getToken: (opts?: { skipCache?: boolean }) => Promise<string | null>;
   signedIn: boolean;
   account: AccountContact | null;
-  onEditAccount?: () => void;
+  onEditName?: () => void;
+  onSaveWhatsapp?: (whatsapp: string) => Promise<void>;
 }) {
   const { slug, sessionId } = useParams();
   const nav = useNavigate();
@@ -398,6 +409,7 @@ function ReservarSesionForm({
   const [offeringId, setOfferingId] = useState("");
   const [coaches, setCoaches] = useState<Coach[]>([]);
   const [meReady, setMeReady] = useState(!signedIn);
+  const [editingPhone, setEditingPhone] = useState(false);
   useEffect(() => {
     if (!slug || !sessionId) return;
     api.bookerSession(slug, sessionId).then((r) => setSession(r.session)).catch((e) => setMsg(e.message));
@@ -425,24 +437,35 @@ function ReservarSesionForm({
     if (!slug || !sessionId) return;
     setMsg(null);
     const known = accountReady(account) ? account : me ? { name: me.name, phone: me.phone } : null;
-    if (signedIn && !known) {
-      setMsg("Completá nombre y WhatsApp en tu cuenta.");
-      return;
-    }
-    if (!known) {
-      const issue = phoneIssue(phone);
-      if (issue) {
-        setMsg(issue);
-        return;
-      }
-    }
     const open = session?.source === "availability";
     if (open && !offeringId) {
       setMsg("Elegí individual o grupal");
       return;
     }
-    const bookName = known?.name ?? name;
-    const bookPhone = known ? (accountReady(account) ? parsePhone(account.phone) : known.phone) : parsePhone(phone);
+    let bookName = known?.name ?? name;
+    let bookPhone = known?.phone ?? phone;
+    if (!accountReady(account) || editingPhone) {
+      const issue = phoneIssue(phone || bookPhone);
+      if (issue) {
+        setMsg(issue);
+        return;
+      }
+      bookPhone = parsePhone(phone || bookPhone);
+      if (signedIn && onSaveWhatsapp) {
+        try {
+          await onSaveWhatsapp(bookPhone);
+        } catch {
+          setMsg("No se pudo guardar el WhatsApp en la cuenta.");
+          return;
+        }
+      }
+    } else {
+      bookPhone = parsePhone(known!.phone);
+    }
+    if (!bookName.trim()) {
+      setMsg("Falta el nombre.");
+      return;
+    }
     try {
       const token = (await getToken({ skipCache: true })) ?? (await getToken()) ?? undefined;
       const r = await api.book(
@@ -552,29 +575,41 @@ function ReservarSesionForm({
             )}
             {!meReady ? (
               <p className="text-sm text-stone-500">Cargando tu ficha…</p>
-            ) : known ? (
+            ) : signedIn && known && !editingPhone ? (
               <div className="rounded-md border border-stone-200 bg-white px-4 py-3 text-sm">
                 <p className="text-stone-500">Reservás como</p>
                 <p className="mt-0.5 font-medium">
                   {known.name}
                   {known.phone ? ` · ${known.phone}` : ""}
                 </p>
-                {signedIn && onEditAccount ? (
-                  <button type="button" className="mt-2 text-xs underline" onClick={onEditAccount}>
-                    Editar en tu cuenta
+                <div className="mt-2 flex flex-wrap gap-3">
+                  {onEditName ? (
+                    <button type="button" className="text-xs underline" onClick={onEditName}>
+                      Editar nombre
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="text-xs underline"
+                    onClick={() => {
+                      setPhone(known.phone);
+                      setEditingPhone(true);
+                    }}
+                  >
+                    Cambiar WhatsApp
                   </button>
-                ) : null}
+                </div>
               </div>
             ) : signedIn ? (
-              <div className="rounded-md border border-stone-200 bg-white px-4 py-3 text-sm">
-                <p className="text-stone-600">
-                  Completá nombre y WhatsApp en tu cuenta. No los pedimos en cada reserva.
-                </p>
-                {onEditAccount ? (
-                  <button type="button" className="mt-2 text-xs underline" onClick={onEditAccount}>
-                    Editar en tu cuenta
-                  </button>
-                ) : null}
+              <div className="space-y-3">
+                {known?.name ? <p className="text-sm text-stone-600">{known.name}</p> : null}
+                <label className="block text-sm" htmlFor="phone">
+                  WhatsApp
+                  <div className="mt-1">
+                    <PhoneField value={phone} onChange={setPhone} />
+                  </div>
+                </label>
+                <p className="text-xs text-stone-500">Queda en tu cuenta. Clerk no admite números de Paraguay.</p>
               </div>
             ) : (
               <>
@@ -602,7 +637,12 @@ function ReservarSesionForm({
             <Button
               type="submit"
               className="w-full"
-              disabled={!meReady || (signedIn ? !known : Boolean(phoneIssue(phone)))}
+              disabled={
+                !meReady ||
+                (signedIn && known && !editingPhone
+                  ? false
+                  : Boolean(phoneIssue(phone)))
+              }
             >
               Reservar
             </Button>

@@ -24,6 +24,14 @@ import {
   weekSessions,
 } from "./db";
 import { alignCatalog, DG_ACADEMY_ID, seedIfEmpty, WP_ACADEMY_ID } from "./seed";
+import { addDaysToKey, dateKeyIn, mondayKeyOf } from "./domain/timezone";
+
+const TZ = "America/Asuncion";
+
+/** Monday of next week as the academy's own calendar sees it. */
+function nextMonday(): string {
+  return addDaysToKey(mondayKeyOf(dateKeyIn(TZ, new Date())), 7);
+}
 
 const url = process.env.DATABASE_URL;
 
@@ -36,19 +44,19 @@ describe.skipIf(!url)("postgres + solape", () => {
   it("rechaza dos clases en la misma pista", async () => {
     const db = await openDb(url);
     await ready(db);
-    const monday = mondayOf(new Date("2032-03-01T00:00:00.000Z"));
-    const to = addDays(monday, 7);
-    const startsAt = new Date("2032-03-01T06:00:00.000Z");
+    const monday = "2032-03-01";
+    const from = new Date("2032-03-01T00:00:00.000Z");
+    const to = new Date("2032-03-08T00:00:00.000Z");
+    const startsAt = new Date("2032-03-01T09:00:00.000Z");
     await db`DELETE FROM bookings WHERE session_id IN (
-      SELECT id FROM sessions WHERE academy_id = ${DG_ACADEMY_ID} AND starts_at >= ${monday} AND starts_at < ${to}
+      SELECT id FROM sessions WHERE academy_id = ${DG_ACADEMY_ID} AND starts_at >= ${from} AND starts_at < ${to}
     )`;
-    await db`DELETE FROM sessions WHERE academy_id = ${DG_ACADEMY_ID} AND starts_at >= ${monday} AND starts_at < ${to}`;
+    await db`DELETE FROM sessions WHERE academy_id = ${DG_ACADEMY_ID} AND starts_at >= ${from} AND starts_at < ${to}`;
     await createSession(db, DG_ACADEMY_ID, {
       offeringId: "off-individual",
       courtId: "court-costanera-1",
       coachId: "coach-fernando-laval",
       startsAt,
-      dayWindow: { from: monday, to },
     });
     await expect(
       createSession(db, DG_ACADEMY_ID, {
@@ -56,7 +64,6 @@ describe.skipIf(!url)("postgres + solape", () => {
         courtId: "court-costanera-1",
         coachId: "coach-pablo-recalde",
         startsAt,
-        dayWindow: { from: monday, to },
       }),
     ).rejects.toBeInstanceOf(OverlapError);
     await db.end();
@@ -67,8 +74,10 @@ describe.skipIf(!url)("reserva pública", () => {
   it("anota un hueco libre como individual", async () => {
     const db = await openDb(url);
     await ready(db);
-    const monday = addDays(mondayOf(new Date()), 7);
-    const session = (await weekGrid(db, DG_ACADEMY_ID, monday)).find((s) => s.source === "availability" && s.location_id === "loc-costanera");
+    const monday = nextMonday();
+    const session = (await weekGrid(db, DG_ACADEMY_ID, monday)).find(
+      (s) => s.source === "availability" && s.location_id === "loc-costanera" && new Date(s.starts_at).getTime() > Date.now() + 13 * 60 * 60 * 1000,
+    );
     expect(session).toBeTruthy();
     const phone = `+595981${Date.now().toString().slice(-6)}`;
     const { status } = await publicBook(db, DG_ACADEMY_ID, session!.id, "Ana Test", phone, {
@@ -85,8 +94,10 @@ describe.skipIf(!url)("paquete de 10", () => {
   it("al confirmar la reserva consume 1 clase y deja el aviso", async () => {
     const db = await openDb(url);
     await ready(db);
-    const monday = addDays(mondayOf(new Date()), 7);
-    const session = (await weekGrid(db, DG_ACADEMY_ID, monday)).find((s) => s.source === "availability");
+    const monday = nextMonday();
+    const session = (await weekGrid(db, DG_ACADEMY_ID, monday)).find(
+      (s) => s.source === "availability" && new Date(s.starts_at).getTime() > Date.now() + 13 * 60 * 60 * 1000,
+    );
     const phone = `+595982${Date.now().toString().slice(-6)}`;
     const booked = await publicBook(db, DG_ACADEMY_ID, session!.id, "Pack Test", phone, { offeringId: "off-grupal" });
     const [student] = await db`SELECT id FROM students WHERE phone = ${phone} AND academy_id = ${DG_ACADEMY_ID}`;
@@ -150,7 +161,7 @@ describe.skipIf(!url)("aislamiento", () => {
   it("el mismo teléfono es dos fichas y la grilla no se mezcla", async () => {
     const db = await openDb(url);
     await ready(db);
-    const monday = addDays(mondayOf(new Date()), 7);
+    const monday = nextMonday();
     await ensureWeek(db, WP_ACADEMY_ID, monday);
     const phone = `+595983${Date.now().toString().slice(-6)}`;
     const a = await findOrCreateStudent(db, DG_ACADEMY_ID, "Ana", phone);
@@ -161,9 +172,9 @@ describe.skipIf(!url)("aislamiento", () => {
     expect(wp.every((s) => s.id.startsWith("occ-tpl-wp"))).toBe(true);
     expect(dg.some((s) => s.id.startsWith("occ-tpl-wp"))).toBe(false);
     const coaches = await db`SELECT name, bio, languages FROM coaches WHERE academy_id = ${DG_ACADEMY_ID} ORDER BY name`;
-    expect((coaches as { name: string }[]).map((c) => c.name)).toContain("Fernando Laval");
-    expect((coaches as { name: string }[]).map((c) => c.name)).not.toContain("Diego");
-    const tati = (coaches as { name: string; bio: string | null; languages: string[] }[]).find((c) => c.name === "Tati Enciso");
+    expect((coaches as unknown as { name: string }[]).map((c) => c.name)).toContain("Fernando Laval");
+    expect((coaches as unknown as { name: string }[]).map((c) => c.name)).not.toContain("Diego");
+    const tati = (coaches as unknown as { name: string; bio: string | null; languages: string[] }[]).find((c) => c.name === "Tati Enciso");
     expect(tati?.languages).toEqual(["es", "gn"]);
     expect(tati?.bio).toMatch(/guaraní/i);
     await db.end();
@@ -172,8 +183,10 @@ describe.skipIf(!url)("aislamiento", () => {
   it("guest queda bloqueado si la ficha está ligada; staff no", async () => {
     const db = await openDb(url);
     await ready(db);
-    const monday = addDays(mondayOf(new Date()), 7);
-    const session = (await weekGrid(db, DG_ACADEMY_ID, monday)).find((s) => s.source === "availability");
+    const monday = nextMonday();
+    const session = (await weekGrid(db, DG_ACADEMY_ID, monday)).find(
+      (s) => s.source === "availability" && new Date(s.starts_at).getTime() > Date.now() + 13 * 60 * 60 * 1000,
+    );
     const phone = `+595984${Date.now().toString().slice(-6)}`;
     const student = await findOrCreateStudent(db, DG_ACADEMY_ID, "Clara", phone, {
       clerkUserId: `user_claimed_${Date.now()}`,
@@ -224,8 +237,10 @@ describe.skipIf(!url)("aislamiento", () => {
   it("publicBook con Clerk reclama la cookie guest aunque el teléfono sea otro", async () => {
     const db = await openDb(url);
     await ready(db);
-    const monday = addDays(mondayOf(new Date()), 7);
-    const holes = (await weekGrid(db, DG_ACADEMY_ID, monday)).filter((s) => s.source === "availability");
+    const monday = nextMonday();
+    const holes = (await weekGrid(db, DG_ACADEMY_ID, monday)).filter(
+      (s) => s.source === "availability" && new Date(s.starts_at).getTime() > Date.now() + 13 * 60 * 60 * 1000,
+    );
     const a = holes[0];
     const b = holes.find((s) => s.id !== a?.id);
     expect(a && b).toBeTruthy();
@@ -246,8 +261,10 @@ describe.skipIf(!url)("aislamiento", () => {
   it("publicBook con ficha Clerk toma nombre y teléfono de la cuenta", async () => {
     const db = await openDb(url);
     await ready(db);
-    const monday = addDays(mondayOf(new Date()), 7);
-    const holes = (await weekGrid(db, DG_ACADEMY_ID, monday)).filter((s) => s.source === "availability");
+    const monday = nextMonday();
+    const holes = (await weekGrid(db, DG_ACADEMY_ID, monday)).filter(
+      (s) => s.source === "availability" && new Date(s.starts_at).getTime() > Date.now() + 13 * 60 * 60 * 1000,
+    );
     const a = holes[0];
     const b = holes.find((s) => s.id !== a?.id);
     expect(a && b).toBeTruthy();

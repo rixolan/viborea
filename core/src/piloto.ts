@@ -44,7 +44,11 @@ export async function pilotoReserva(db: Db, input: PilotoInput, now = new Date()
   }
 
   const sessions = (await weekGrid(db, academyId, monday)).filter(
-    (s) => s.cancelled === 0 && s.booked < s.capacity && (s.source === "availability" || s.capacity === 4),
+    (s) =>
+      s.cancelled === 0 &&
+      s.booked < s.capacity &&
+      (s.source === "availability" || s.capacity === 4) &&
+      new Date(s.starts_at).getTime() > now.getTime() + 13 * 60 * 60 * 1000,
   );
   const chosen = sessions[0];
   if (!chosen) throw new Error("No hay clase grupal libre la semana que viene");

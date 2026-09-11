@@ -368,8 +368,8 @@ function PlayerPanel({
 
       {!student && signedIn ? (
         <div className="rounded-md border border-stone-200 bg-white px-4 py-3 text-sm text-stone-600">
-          Esta cuenta no tiene ficha en {academyName || "esta academia"}. La primera reserva usa el nombre y el WhatsApp
-          de tu cuenta.
+          Esta cuenta no tiene ficha en {academyName || "esta academia"}. La primera reserva pide el WhatsApp y lo deja
+          en tu cuenta.
         </div>
       ) : null}
 
