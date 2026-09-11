@@ -106,7 +106,7 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 6. Avoid `up` that recreates `db`. Volume `viborea_pgdata` is the data. `bandeja-2ryryu_pgdata` is backup. “volume already exists” is not a failure.
 7. Clerk publishable key: compose build-arg `NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY`.
 8. WhatsApp: copy `WHATSAPP_TEST_*` from Doppler `viborea`/`dev` into the VPS `.env` after any Dokploy Redeploy (it overwrites `.env`). `APP_URL=https://viborea.com`.
-8b. `PLAYER_COOKIE_SECRET` must exist in the Dokploy env UI or compose refuses to start. Rotate through `PLAYER_COOKIE_SECRET_OLD` so manage links already in WhatsApp keep working.
+8b. `PLAYER_COOKIE_SECRET` belongs in the Dokploy env UI. Unset, the app signs with `CLERK_SECRET_KEY` and warns; production never signs with the repo constant. Rotate through `PLAYER_COOKIE_SECRET_OLD` so manage links already in WhatsApp keep working.
 8c. The `backup` service dumps nightly to volume `viborea_backups`. Take a one-shot snapshot before a migration deploy: `docker compose -p viborea run --rm backup /usr/local/bin/pg-backup.sh --once`.
 9. Metabase (`academiadg-metabase-nimooc`): network `viborea`, host `viborea-db-1`. Do not print DB passwords or git oauth tokens.
 10. Host only exposes 80/443. Postgres stays on `127.0.0.1:5432`. Hex SSH uses port **80** (`sslh`).

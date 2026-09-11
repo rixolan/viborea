@@ -4,8 +4,12 @@ import { assertSecrets, SecretError, signingSecret, verifyingSecrets } from "./s
 const prod = { NODE_ENV: "production" } as unknown as NodeJS.ProcessEnv;
 
 describe("secretos de firma", () => {
-  it("en producción exige PLAYER_COOKIE_SECRET", () => {
+  it("en producción exige un secreto real, nunca el del repo", () => {
     expect(() => signingSecret(prod)).toThrow(SecretError);
+    expect(signingSecret({ ...prod, PLAYER_COOKIE_SECRET: "s3cret" })).toBe("s3cret");
+    // Aceptado con aviso: es lo que firmaba antes. No es el constante del repo.
+    expect(signingSecret({ ...prod, CLERK_SECRET_KEY: "sk_live_x" })).toBe("sk_live_x");
+    expect(signingSecret({ ...prod, CLERK_SECRET_KEY: "sk_live_x" })).not.toBe("dev-player-cookie");
     expect(() => assertSecrets({ ...prod, PLAYER_COOKIE_SECRET: "s3cret" })).toThrow(/CLERK_SECRET_KEY/);
     expect(() =>
       assertSecrets({ ...prod, PLAYER_COOKIE_SECRET: "s3cret", CLERK_SECRET_KEY: "sk_live_x" }),

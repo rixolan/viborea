@@ -1,15 +1,28 @@
 /**
  * Secrets used to sign player cookies and WhatsApp manage links.
  *
- * `PLAYER_COOKIE_SECRET` is required in production: without it those tokens
- * would be signed with a constant anyone can read in this repo, which is
- * enough to forge a link that cancels somebody else's class.
+ * Production must never sign with the constant in this file: anyone reading
+ * the repo could forge a link that cancels somebody else's class. A dedicated
+ * `PLAYER_COOKIE_SECRET` is the right answer, and `CLERK_SECRET_KEY` is
+ * accepted with a warning because that is what these tokens were signed with
+ * before — the cost is coupling, not forgeability: rotating Clerk invalidates
+ * every manage link already sent.
  *
  * Verification also accepts retired secrets (`PLAYER_COOKIE_SECRET_OLD`, and
- * the Clerk key this used to piggyback on) so rotating the secret does not
- * invalidate every manage link already sitting in a player's WhatsApp.
+ * the Clerk key) so rotating does not invalidate the links already sitting in
+ * a player's WhatsApp.
  */
 const DEV_FALLBACK = "dev-player-cookie";
+
+let warned = false;
+
+function warnCoupled(): void {
+  if (warned) return;
+  warned = true;
+  console.warn(
+    "PLAYER_COOKIE_SECRET ausente: se firma con CLERK_SECRET_KEY. Rotar Clerk invalidaría los enlaces de gestión ya enviados.",
+  );
+}
 
 export class SecretError extends Error {}
 
@@ -26,10 +39,15 @@ export function isProduction(env: NodeJS.ProcessEnv = process.env): boolean {
 export function signingSecret(env: NodeJS.ProcessEnv = process.env): string {
   const primary = clean(env.PLAYER_COOKIE_SECRET);
   if (primary) return primary;
-  if (isProduction(env)) {
-    throw new SecretError("PLAYER_COOKIE_SECRET es obligatorio en producción");
+  const clerk = clean(env.CLERK_SECRET_KEY);
+  if (clerk) {
+    if (isProduction(env)) warnCoupled();
+    return clerk;
   }
-  return clean(env.CLERK_SECRET_KEY) ?? DEV_FALLBACK;
+  if (isProduction(env)) {
+    throw new SecretError("PLAYER_COOKIE_SECRET (o CLERK_SECRET_KEY) es obligatorio en producción");
+  }
+  return DEV_FALLBACK;
 }
 
 /** Every secret a token may legitimately have been signed with, newest first. */
