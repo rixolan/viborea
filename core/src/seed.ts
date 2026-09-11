@@ -231,7 +231,7 @@ export async function seedIfEmpty(db: Db): Promise<void> {
     }
 
     for (const c of DG_COACHES) {
-      await upsertDgCoach(tx, c);
+      await upsertDgCoach(tx as unknown as Db, c);
     }
     await tx`INSERT INTO coaches (id, academy_id, name) VALUES ('coach-wp-1', ${WP_ACADEMY_ID}, 'Profe WP')`;
 
@@ -243,7 +243,7 @@ export async function seedIfEmpty(db: Db): Promise<void> {
     await tx`INSERT INTO templates (id, academy_id, offering_id, location_id, court_id, coach_id, weekday, start_time, end_time)
       VALUES ('tpl-wp-mon-18', ${WP_ACADEMY_ID}, 'off-wp-grupal', 'loc-wp-1', 'court-wp-1', 'coach-wp-1', 'monday', '18:00', '19:00')`;
 
-    await insertAvailability(tx);
+    await insertAvailability(tx as unknown as Db);
 
     const names = [
       "María González",
@@ -290,9 +290,9 @@ export async function replaceDgRoster(db: Db): Promise<void> {
     await tx`DELETE FROM coaches WHERE academy_id = ${DG_ACADEMY_ID} AND NOT (id = ANY(${ids}))`;
     await tx`DELETE FROM offerings WHERE id = 'off-dual'`;
     for (const c of DG_COACHES) {
-      await upsertDgCoach(tx, c);
+      await upsertDgCoach(tx as unknown as Db, c);
     }
-    await insertAvailability(tx);
+    await insertAvailability(tx as unknown as Db);
   });
 }
 

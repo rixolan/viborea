@@ -1,4 +1,4 @@
-import { atTimeOn } from "./template";
+import { instantFrom, minutesOfTime, timeOfMinutes } from "./timezone";
 import type { DayOfWeek } from "./types";
 
 export type AvailabilityBlock = {
@@ -11,17 +11,18 @@ export type AvailabilityBlock = {
 
 /** Half-open [start, end): 06:00–11:00 → 06, 07, 08, 09, 10. */
 export function hoursInRange(startTime: string, endTime: string): string[] {
-  const start = minutes(startTime);
-  const end = minutes(endTime);
+  const start = minutesOfTime(startTime);
+  const end = minutesOfTime(endTime);
   const out: string[] = [];
   for (let m = start; m + 60 <= end; m += 60) {
-    out.push(hhmm(m));
+    out.push(timeOfMinutes(m));
   }
   return out;
 }
 
-export function slotStarts(day: Date, hour: string): Date {
-  return atTimeOn(day, hour);
+/** The instant that local hour starts on that local calendar date. */
+export function slotStarts(dateKey: string, hour: string, timeZone: string): Date {
+  return instantFrom(dateKey, hour, timeZone);
 }
 
 export function slotEnds(starts: Date, durationMinutes = 60): Date {
@@ -48,13 +49,11 @@ export function parseOpenSlotId(id: string): { locationId: string; coachId: stri
   return { locationId, coachId, startsAt };
 }
 
-function minutes(hhmmValue: string): number {
-  const [h, m] = hhmmValue.split(":").map(Number);
-  return h * 60 + m;
-}
-
-function hhmm(total: number): string {
-  const h = Math.floor(total / 60);
-  const m = total % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+/** Two presence blocks for the same coach on the same weekday may not overlap. */
+export function blocksOverlap(a: AvailabilityBlock, b: AvailabilityBlock): boolean {
+  if (a.weekday !== b.weekday) return false;
+  return (
+    minutesOfTime(a.startTime) < minutesOfTime(b.endTime) &&
+    minutesOfTime(b.startTime) < minutesOfTime(a.endTime)
+  );
 }

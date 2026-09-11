@@ -34,11 +34,13 @@ export interface OverlapConflict {
   otherSessionId: string;
 }
 
+const OVERLAP_NOUN: Record<OverlapKind, string> = { court: "cancha", coach: "entrenador" };
+
 export class OverlapError extends Error {
   readonly conflicts: OverlapConflict[];
 
   constructor(conflicts: OverlapConflict[]) {
-    const kinds = [...new Set(conflicts.map((c) => c.kind))].join(" y ");
+    const kinds = [...new Set(conflicts.map((c) => OVERLAP_NOUN[c.kind]))].join(" y ");
     super(`Solape de ${kinds}`);
     this.name = "OverlapError";
     this.conflicts = conflicts;

@@ -11,5 +11,8 @@
   "dependencies": {
     "@clerk/backend": "^3.17.1",
     "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2"
   }
 }

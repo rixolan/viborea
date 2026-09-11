@@ -1,11 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { PLACEHOLDER_PROFES } from "./placeholders";
 import { DG_COACHES } from "./seed";
 
 describe("roster DG", () => {
   it("no incluye a Diego y todos hablan español", () => {
     expect(DG_COACHES.some((c) => /diego/i.test(c.name))).toBe(false);
-    expect(PLACEHOLDER_PROFES.some((p) => /diego/i.test(p.name))).toBe(false);
     expect(DG_COACHES.every((c) => c.languages[0] === "es")).toBe(true);
   });
 

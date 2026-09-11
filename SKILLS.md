@@ -33,15 +33,17 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 **Do:**
 
 1. Read `core/src/domain/overlap.ts`, `capacity.ts`, `template.ts`, `types.ts`.
-2. Overlap = interval overlap `[start, end)` AND (`court_id` equal OR `coach_id` equal). Both are errors. Adjacent end==start is not overlap. `cancelled` sessions do not occupy.
-3. Occupying bookings: `pending_payment` | `confirmed` | `checked_in` (`OCCUPYING_BOOKING_STATUSES`).
-4. Individual/grupal are offerings with `capacity` 1 / N. Do not add dual as a third engine (CONTEXT.md).
-5. Templates materialize sessions; exceptions edit one occurrence. Persist via `ensureWeek` / `createSession` in `core/src/db.ts`.
-6. Keep the same error type (`OverlapError`). API/HTML must surface the message, not swallow it.
+2. Overlap = interval overlap `[start, end)` AND (`court_id` equal OR `coach_id` equal). Both are errors. Adjacent end==start is not overlap. `cancelled` sessions do not occupy. Postgres enforces it (`sessions_court_no_overlap`, `sessions_coach_no_overlap`); keep those constraints and keep translating `23P01` to `OverlapError`.
+3. Hours are **local to `academy.timezone`**. Build instants with `core/src/domain/timezone.ts` (`instantFrom`, `weekWindow`); never `setUTCHours`. Weeks come from `weekOf` / `weekOfAcademy`.
+4. Occupying bookings: `pending_payment` | `confirmed` | `checked_in` (`OCCUPYING_BOOKING_STATUSES`). A cancelled booking may be revived on the same row.
+5. Writes that decide a cupo run inside `db.begin` with the session row locked `FOR UPDATE`, and availability holes behind `pg_advisory_xact_lock`.
+6. Individual/grupal are offerings with `capacity` 1 / N. Do not add dual as a third engine (CONTEXT.md).
+7. Templates materialize sessions; exceptions edit one occurrence. Persist via `ensureWeek` / `createSession` in `core/src/db.ts`.
+8. Keep the same error type (`OverlapError`). The API must surface the message, not swallow it.
 
-**Files:** `core/src/domain/overlap.ts`, `capacity.ts`, `template.ts`, `engine.test.ts`, `core/src/db.ts`
+**Files:** `core/src/domain/overlap.ts`, `capacity.ts`, `template.ts`, `timezone.ts`, `engine.test.ts`, `core/src/reliability.test.ts`, `core/src/db.ts`
 
-**Check:** `bun --cwd core test`
+**Check:** `DATABASE_URL=… bun --cwd core test` (the races and cascades live in `reliability.test.ts` and skip without a database)
 
 ---
 
@@ -54,15 +56,17 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 1. Add or change the handler in `core/src/api.ts` (`handleApi`). Return JSON errors with `{ error }`.
 2. Mirror the type in `web/src/api.ts`. Do not use `ReturnType<typeof …>` for public contracts; name the type.
 3. `GET /api/week?monday=` (staff, org JWT) and `GET /api/a/:slug/week?monday=` (booker) must `ensureWeek` for **that** Monday.
-4. Public book: `POST /api/a/:slug/book` → `publicBook`. Guest until the ficha is claimed. Status `pending_payment` or waitlist.
+4. Public book: `POST /api/a/:slug/book` → `publicBook`. Guest until the ficha is claimed. Status `pending_payment` or waitlist. Rate-limited per IP.
 5. Academia payment toggle: `POST /api/bookings/:id/status` (org JWT → `academy_id`).
+5b. Every staff route goes through `requireAcademy`. Parse bodies with the `body()` helper so malformed JSON is a 400, and let `failed()` map domain errors; never add a route outside `handleApi`.
+5c. Session payloads carry `local_date` / `local_time` / `time_zone`. The SPA displays those; it does not compute hours from `starts_at`.
 6. SPA pages live in `web/src/pages.tsx`. Shell in `shell.tsx`. Routes in `App.tsx`.
 7. Dev: Vite proxies `/api` to `http://127.0.0.1:8080`. If Bun listens on 3000, point the proxy at 3000 or set `PORT=8080`.
-8. Production: Bun serves `web/dist` (path from `core/src/server.ts`: `../../web/dist`). New UI = React, not `html.ts`.
+8. Production: Bun serves `web/dist` (path from `core/src/server.ts`: `../../web/dist`). New UI = React; `html.ts` is gone and must not come back.
 
 **Files:** `core/src/api.ts`, `core/src/server.ts`, `web/src/api.ts`, `web/src/pages.tsx`, `web/vite.config.ts`
 
-**Check:** `bun --cwd core test`; `cd web && bun run build`; curl `/api/health`.
+**Check:** `bun --cwd core test`; `bunx --cwd core tsc --noEmit -p tsconfig.json`; `cd web && bunx tsc --noEmit -p tsconfig.json && bun run build`; curl `/api/health`.
 
 ---
 
@@ -75,7 +79,8 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 1. Product DB is Postgres 18 via `postgres.js`. No Prisma, no Supabase for Viborea.
 2. Empty install: `core/src/db/schema.sql`. Existing: add a migration id in `core/src/db/migrate.ts` (`schema_migrations`).
 3. N academias per Postgres. Tenant tables carry `academy_id`. Slug lives on `academy.slug` (ADR 0003). No `studio_id`.
-4. Boot path: `openDb` → migrate → `seedIfEmpty` → `alignCatalog` (`core/src/server.ts`).
+4. Boot path: `openDb` → migrate → `seedIfEmpty` (`core/src/server.ts`). `alignCatalog` runs only with `SEED_ALIGN_DG=1`: it deletes DG's templates and availability. Sedes, canchas, profes, franjas and tipos de clase are edited from `/academia/catalogo` and `/academia/profes`, so do not add catalog rows to `seed.ts` for a new academia.
+4b. `sessions` carries two GiST `EXCLUDE` constraints and needs `btree_gist`. Keep them in `schema.sql` for fresh installs and in `migrate.ts` for existing ones.
 5. Production: user/db `viborea`, volume `viborea_pgdata`, not published to WAN. Local URL `postgres://viborea:viborea@127.0.0.1:5432/viborea`.
 6. Do not edit `supabase/migrations/` for product schema.
 
@@ -101,6 +106,8 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 6. Avoid `up` that recreates `db`. Volume `viborea_pgdata` is the data. `bandeja-2ryryu_pgdata` is backup. “volume already exists” is not a failure.
 7. Clerk publishable key: compose build-arg `NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY`.
 8. WhatsApp: copy `WHATSAPP_TEST_*` from Doppler `viborea`/`dev` into the VPS `.env` after any Dokploy Redeploy (it overwrites `.env`). `APP_URL=https://viborea.com`.
+8b. `PLAYER_COOKIE_SECRET` must exist in the Dokploy env UI or compose refuses to start. Rotate through `PLAYER_COOKIE_SECRET_OLD` so manage links already in WhatsApp keep working.
+8c. The `backup` service dumps nightly to volume `viborea_backups`. Take a one-shot snapshot before a migration deploy: `docker compose -p viborea run --rm backup /usr/local/bin/pg-backup.sh --once`.
 9. Metabase (`academiadg-metabase-nimooc`): network `viborea`, host `viborea-db-1`. Do not print DB passwords or git oauth tokens.
 10. Host only exposes 80/443. Postgres stays on `127.0.0.1:5432`. Hex SSH uses port **80** (`sslh`).
 11. Public check: `https://viborea.com/api/health` (`{"ok":true}`), SPA hash, `/coaches/coach-pablo-recalde.webp`.
@@ -121,7 +128,7 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 2. Happy path payment is stub / manual mark paid in Academia. `core/src/payments/tpago.ts` stays behind the interface. No live keys in git or chat.
 3. Do not connect the academy’s production WhatsApp/Meta number. No OpenWA/WAHA.
 4. Chatwoot AgentBot: `workers/chatwoot-agent-bot/` — sandbox or a dedicated WABA only. It does not write the real grid yet.
-5. Notify + 24h reminder: `core/src/notify/whatsapp.ts` (dry-run unless `WHATSAPP_TEST_*` set). Manage link `core/src/manage-link.ts` → `/reservar/:slug/turno/:token`. Cancel/reschedule only if `selfServeOpen` (cutoff, default 12h).
+5. Notify + 24h reminder: `core/src/notify/whatsapp.ts` (dry-run unless `WHATSAPP_TEST_*` set). Manage link `core/src/manage-link.ts` → `/reservar/:slug/turno/:token`, signed with `core/src/secret.ts`. Cancel/reschedule only if `selfServeOpen` (cutoff, default 12h). Mark `reminded_at` only on a delivered free-text send: dry-run and the `hello_world` fallback are not reminders.
 6. Secrets: Doppler project **viborea**, config **dev**. Never commit tokens.
 7. Cutoff and pack rules: `core/src/domain/cutoff.ts`, `pack.ts`. Configurable per academy.
 
@@ -133,14 +140,15 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 
 ## ui-shell
 
-**When:** landing, reservar, jugador, academia, Clerk, visual design.
+**When:** landing, reservar, jugador, academia, catálogo, Clerk, visual design.
 
 **Do:**
 
 1. One shell: `web/src/shell.tsx` (stone, DM Sans). Primitives in `web/src/ui.tsx`. Do not add a second design system or Nuxt UI.
 2. Clerk wraps the app only if `VITE_CLERK_PUBLISHABLE_KEY` is set. Do not call `useAuth` without `ClerkProvider` — split gated components (`ClerkGate`).
 3. Booker lists real `/api/a/:slug/week` sessions (court + coach + cupos). No `placeholders.ts` occupancy in the SPA.
-4. Academia: week + optional coach filter + roster + pagado/pendiente. Staff APIs send Clerk JWT.
+4. Academia: week + optional coach filter + roster + pagado/pendiente + cancelar clase + nueva clase. Sedes, canchas, profes y tipos de clase en `/academia/catalogo`; franjas de presencia en `/academia/profes`. Staff APIs send Clerk JWT.
+4b. Dates and hours come from `local_date` / `local_time`, or `web/src/time.ts` with the payload `time_zone`. Never `new Date(iso).getUTCHours()`: a player in Madrid must read the Asunción hour.
 5. Área del jugador: `/reservar/:slug/clases`. Entrar jugador `/entrar/jugador/:slug` (no activa org). Entrar academia `/entrar/academia`. No revivir `/jugador` as a third shell. Confirmación: signed-in uses Clerk name + `unsafe_metadata.whatsapp` (Clerk no admite PY). Guest still fills name + WhatsApp.
 6. Build: `cd web && bun run build`. Image copies `web/dist` to `/web/dist`.
 

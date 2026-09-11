@@ -1,59 +1,56 @@
 import { assertNoOverlap } from "./overlap";
 import {
-  JS_DAY,
-  type MaterializedSession,
-  type SessionException,
-  type WeeklyTemplateSlot,
-} from "./types";
+  addDaysToKey,
+  DEFAULT_TIMEZONE,
+  instantFrom,
+  keyOfUtc,
+  keyToUtc,
+  weekdayOfKey,
+} from "./timezone";
+import { type MaterializedSession, type SessionException, type WeeklyTemplateSlot } from "./types";
 
-const DEFAULT_WINDOW_DAYS = 21;
-
+/** Local calendar date of a UTC-midnight Date. Week params only. */
 export function dateKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return keyOfUtc(d);
 }
 
-export function atTimeOn(day: Date, hhmm: string): Date {
-  const [h, m] = hhmm.split(":").map(Number);
-  const next = new Date(day);
-  next.setUTCHours(h, m, 0, 0);
-  return next;
+/** The instant a local `HH:MM` happens on that local calendar date. */
+export function atTimeOn(dateKey: string, time: string, timeZone = DEFAULT_TIMEZONE): Date {
+  return instantFrom(dateKey, time, timeZone);
 }
 
-function slotActiveOn(slot: WeeklyTemplateSlot, day: Date): boolean {
-  const key = dateKey(day);
-  if (slot.effectiveFrom && key < slot.effectiveFrom) return false;
-  if (slot.effectiveUntil && key > slot.effectiveUntil) return false;
+function slotActiveOn(slot: WeeklyTemplateSlot, dateKey: string): boolean {
+  if (slot.effectiveFrom && dateKey < slot.effectiveFrom) return false;
+  if (slot.effectiveUntil && dateKey > slot.effectiveUntil) return false;
   return true;
 }
 
+/**
+ * Explode the planilla madre into sessions over `[fromKey, toKey)` local days.
+ * Times are wall clocks at the sede, so the same 15:00 row is a different
+ * instant either side of a DST change.
+ */
 export function materializeTemplate(
   templates: readonly WeeklyTemplateSlot[],
-  range: { from: Date; to?: Date },
+  range: { fromKey: string; toKey: string; timeZone?: string },
   exceptions: readonly SessionException[] = [],
 ): MaterializedSession[] {
-  const from = new Date(range.from);
-  from.setUTCHours(0, 0, 0, 0);
-  const to = range.to
-    ? new Date(range.to)
-    : new Date(from.getTime() + DEFAULT_WINDOW_DAYS * 86_400_000);
-
+  const timeZone = range.timeZone ?? DEFAULT_TIMEZONE;
   const sessions: MaterializedSession[] = [];
-  const cursor = new Date(from);
-
-  while (cursor < to) {
-    const jsDay = cursor.getUTCDay();
+  for (let key = range.fromKey; key < range.toKey; key = addDaysToKey(key, 1)) {
+    const weekday = weekdayOfKey(key);
     for (const slot of templates) {
-      if (JS_DAY[slot.dayOfWeek] !== jsDay) continue;
-      if (!slotActiveOn(slot, cursor)) continue;
+      if (slot.dayOfWeek !== weekday) continue;
+      if (!slotActiveOn(slot, key)) continue;
       const session: MaterializedSession = {
-        id: `occ-${slot.id}-${dateKey(cursor)}`,
+        id: `occ-${slot.id}-${key}`,
         templateId: slot.id,
         offeringId: slot.offeringId,
         locationId: slot.locationId,
         courtId: slot.courtId,
         coachStaffId: slot.coachStaffId,
-        startsAt: atTimeOn(cursor, slot.startTime),
-        endsAt: atTimeOn(cursor, slot.endTime),
+        startsAt: instantFrom(key, slot.startTime, timeZone),
+        endsAt: instantFrom(key, slot.endTime, timeZone),
         capacity: slot.capacity,
         source: "template",
         cancelled: false,
@@ -61,9 +58,7 @@ export function materializeTemplate(
       assertNoOverlap(session, sessions);
       sessions.push(session);
     }
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
-
   return applyExceptions(sessions, exceptions);
 }
 
@@ -75,15 +70,13 @@ export function applyExceptions(
   const byId = new Map(next.map((s) => [s.id, s]));
 
   for (const ex of exceptions) {
+    const row = byId.get(ex.occurrenceId);
+    if (!row) continue;
     if (ex.type === "cancel") {
-      const row = byId.get(ex.occurrenceId);
-      if (!row) continue;
       row.cancelled = true;
       row.source = "exception";
       continue;
     }
-    const row = byId.get(ex.occurrenceId);
-    if (!row) continue;
     Object.assign(row, ex.patch);
     row.source = "exception";
   }
@@ -91,11 +84,11 @@ export function applyExceptions(
   return next;
 }
 
+/** UTC-midnight Monday of that date. Kept for week parameters, not for times. */
 export function mondayOf(d: Date): Date {
-  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const x = keyToUtc(keyOfUtc(d));
   const day = x.getUTCDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  x.setUTCDate(x.getUTCDate() + diff);
+  x.setUTCDate(x.getUTCDate() + (day === 0 ? -6 : 1 - day));
   return x;
 }
 
@@ -103,8 +96,4 @@ export function addDays(d: Date, n: number): Date {
   const x = new Date(d);
   x.setUTCDate(x.getUTCDate() + n);
   return x;
-}
-
-export function hhmm(d: Date): string {
-  return d.toISOString().slice(11, 16);
 }

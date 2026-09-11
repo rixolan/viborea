@@ -1,15 +1,11 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { signPayload, verifyPayload } from "./secret";
 
-function secret(): string {
-  return process.env.PLAYER_COOKIE_SECRET ?? process.env.CLERK_SECRET_KEY ?? "dev-player-cookie";
-}
-
-function sign(academyId: string, bookingId: string): string {
-  return createHmac("sha256", secret()).update(`${academyId}:${bookingId}`).digest("base64url");
+function payload(academyId: string, bookingId: string): string {
+  return `${academyId}:${bookingId}`;
 }
 
 export function encodeManageToken(academyId: string, bookingId: string): string {
-  return `${bookingId}.${sign(academyId, bookingId)}`;
+  return `${bookingId}.${signPayload(payload(academyId, bookingId))}`;
 }
 
 export function decodeManageToken(academyId: string, token: string | undefined): string | null {
@@ -19,10 +15,7 @@ export function decodeManageToken(academyId: string, token: string | undefined):
   const bookingId = token.slice(0, dot);
   const mac = token.slice(dot + 1);
   if (!bookingId || !mac) return null;
-  const expected = sign(academyId, bookingId);
-  const a = Buffer.from(mac);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  if (!verifyPayload(payload(academyId, bookingId), mac)) return null;
   return bookingId;
 }
 

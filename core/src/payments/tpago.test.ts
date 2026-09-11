@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   TPAGO_SANDBOX,
+  type FetchLike,
   TpagoClient,
   applyCallback,
   basicAuth,
@@ -56,7 +57,7 @@ describe("TPago protocol", () => {
 
   it("live client posts Basic auth to generate-payment-link", async () => {
     const calls: { url: string; auth: string; body: unknown }[] = [];
-    const fakeFetch: typeof fetch = async (url, init) => {
+    const fakeFetch: FetchLike = async (url, init) => {
       const headers = new Headers(init?.headers);
       calls.push({
         url: String(url),

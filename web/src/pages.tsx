@@ -1,22 +1,42 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { Link, NavLink, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { CreateOrganization, SignIn, SignUp, useAuth, useClerk, useUser } from "@clerk/clerk-react";
 import { accountContact, accountReady, type AccountContact } from "./account";
-import { api, type Coach, type HistoryBooking, type Offering, type Session, type SessionDetail, type Student } from "./api";
+import {
+  api,
+  type AcademySettings,
+  type Availability,
+  type Coach,
+  type HistoryBooking,
+  type Offering,
+  type Session,
+  type SessionDetail,
+  type StaffCatalog,
+  type Student,
+  type Template,
+} from "./api";
 import { RequireAcademia, RequireAuth } from "./auth";
 import { Badge, Button, Card, Input } from "./ui";
 import { Booker, coachPhoto, languageLabels } from "./booker";
-import { WeekGrid, hhmm } from "./week-grid";
+import { WeekGrid } from "./week-grid";
+import { dayAt, dayLongLabel, thisMondayKey } from "./time";
 import { PhoneField } from "./phone-field";
 import { parsePhone, phoneIssue } from "./phone";
 
 const clerkFields = { layout: { showOptionalFields: true } };
 
-function mondayISO(d = new Date()) {
-  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-  const day = x.getUTCDay() || 7;
-  x.setUTCDate(x.getUTCDate() - day + 1);
-  return x.toISOString().slice(0, 10);
+const hasClerk = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
+
+/**
+ * Staff screens read the Clerk JWT, so they may not call `useAuth` unless a
+ * `ClerkProvider` is mounted. Without the key that used to throw a blank error
+ * page; now it says what is missing.
+ */
+function staffPage(Inner: () => ReactNode): () => ReactNode {
+  return function StaffPage() {
+    if (!hasClerk) return clerkMissing();
+    return <Inner />;
+  };
 }
 
 export function Landing() {
@@ -275,7 +295,9 @@ export function ReservarTurno() {
     <div className="mx-auto max-w-lg space-y-4">
       <h1 className="text-xl font-semibold">Tu clase</h1>
       <Card className="space-y-1 p-4">
-        <p className="font-medium">{formatDay(booking.starts_at)} {hhmm(new Date(booking.starts_at))}</p>
+        <p className="font-medium">
+          {dayAt(booking.starts_at, booking.time_zone)} {booking.local_time}
+        </p>
         <p className="text-sm text-stone-600">
           {booking.offering_name} · {booking.coach_name} · {booking.location_name} · {booking.court_name}
         </p>
@@ -307,7 +329,7 @@ export function ReservarTurno() {
                 {alts.slice(0, 12).map((s) => (
                   <li key={s.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
                     <span>
-                      {formatDay(s.starts_at)} {hhmm(new Date(s.starts_at))} · {s.coach_name} · {s.location_name}
+                      {dayLongLabel(s.local_date)} {s.local_time} · {s.coach_name} · {s.location_name}
                     </span>
                     <button
                       type="button"
@@ -342,13 +364,6 @@ export function ReservarTurno() {
       </Link>
     </div>
   );
-}
-
-function formatDay(iso: string) {
-  const d = new Date(iso);
-  const days = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
-  const months = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-  return `${days[d.getUTCDay()]} ${d.getUTCDate()} ${months[d.getUTCMonth()]}`;
 }
 
 export function ReservarSesion() {
@@ -488,8 +503,8 @@ function ReservarSesionForm({
   const coach = coaches.find((c) => c.id === session.coach_id);
   const coachLangs = languageLabels(coach?.languages);
   const rows = [
-    ["Día", formatDay(session.starts_at)],
-    ["Hora", hhmm(session.starts_at)],
+    ["Día", dayLongLabel(session.local_date)],
+    ["Hora", session.local_time],
     ["Sede", session.location_name],
     ["Cancha", session.court_name || "Se asigna al reservar"],
     ["Profe", session.coach_name],
@@ -536,7 +551,7 @@ function ReservarSesionForm({
           <h1 className="text-2xl font-semibold">Confirmar reserva</h1>
           <div className="rounded-md border border-stone-200 bg-white px-5 py-4 text-sm">
             <p className="font-medium">
-              {formatDay(session.starts_at)} · {hhmm(session.starts_at)}
+              {dayLongLabel(session.local_date)} · {session.local_time}
             </p>
             <p className="mt-1 text-stone-600">
               {session.location_name}
@@ -674,6 +689,9 @@ function AcademiaNav() {
       <NavLink to="/academia/profes" className={item}>
         Profes
       </NavLink>
+      <NavLink to="/academia/catalogo" className={item}>
+        Sedes y clases
+      </NavLink>
       <NavLink to="/academia/ajustes" className={item}>
         Reservas
       </NavLink>
@@ -681,9 +699,9 @@ function AcademiaNav() {
   );
 }
 
-export function Academia() {
+function AcademiaInner() {
   const { getToken } = useAuth();
-  const [monday, setMonday] = useState(mondayISO());
+  const [monday, setMonday] = useState(thisMondayKey());
   const [sessions, setSessions] = useState<Session[]>([]);
   const [coachId, setCoachId] = useState("");
   const [coaches, setCoaches] = useState<{ id: string; name: string }[]>([]);
@@ -696,13 +714,32 @@ export function Academia() {
       setBookerPath(s.booker_path);
     })();
   }, [getToken]);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  async function load() {
+    const token = (await getToken()) ?? undefined;
+    const r = await api.week(monday, token);
+    if (r.monday !== monday) setMonday(r.monday);
+    setSessions(r.sessions);
+  }
   useEffect(() => {
-    void (async () => {
-      const token = (await getToken()) ?? undefined;
-      const r = await api.week(monday, token);
-      setSessions(r.sessions);
-    })();
+    void load().catch((e: Error) => setMsg(e.message));
   }, [monday, getToken]);
+  async function cancel(s: Session) {
+    const people = s.booked;
+    const warning = people
+      ? `Cancelar ${s.offering_name} del ${s.local_date} ${s.local_time}? Se cancelan ${people} reserva(s) y avisamos por WhatsApp.`
+      : `Cancelar ${s.offering_name} del ${s.local_date} ${s.local_time}?`;
+    if (!window.confirm(warning)) return;
+    try {
+      const token = (await getToken()) ?? undefined;
+      const r = await api.cancelSession(s.id, token);
+      setMsg(r.message);
+      await load();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Error");
+    }
+  }
   const shown = sessions.filter((s) => !coachId || s.coach_id === coachId);
   return (
     <RequireAcademia>
@@ -737,13 +774,36 @@ export function Academia() {
             ))}
           </select>
         </div>
+        {msg ? <p className="text-sm text-stone-700">{msg}</p> : null}
+        <div>
+          <Button type="button" variant="outline" onClick={() => setAdding(!adding)}>
+            {adding ? "Cerrar" : "Nueva clase"}
+          </Button>
+        </div>
+        {adding ? (
+          <NuevaClase
+            monday={monday}
+            onDone={async (message) => {
+              setMsg(message);
+              setAdding(false);
+              await load();
+            }}
+          />
+        ) : null}
         <WeekGrid
           monday={monday}
           sessions={shown}
           action={(s) => (
-            <Link to={`/academia/sesion/${s.id}`} className="text-sm underline">
-              Abrir
-            </Link>
+            <span className="flex items-center gap-2">
+              <Link to={`/academia/sesion/${s.id}`} className="text-sm underline">
+                Abrir
+              </Link>
+              {s.cancelled === 1 ? null : (
+                <button type="button" className="text-xs text-stone-500 underline" onClick={() => void cancel(s)}>
+                  Cancelar
+                </button>
+              )}
+            </span>
           )}
         />
       </div>
@@ -751,7 +811,7 @@ export function Academia() {
   );
 }
 
-export function AcademiaSesion() {
+function AcademiaSesionInner() {
   const { id } = useParams();
   const { getToken } = useAuth();
   const [data, setData] = useState<SessionDetail | null>(null);
@@ -770,6 +830,22 @@ export function AcademiaSesion() {
     setMsg(r.message);
     await load();
   }
+  async function cancelClass() {
+    if (!id || !data) return;
+    const people = data.bookings.filter((b) => b.status !== "cancelled").length;
+    const warning = people
+      ? `Cancelar la clase? Se cancelan ${people} reserva(s), se devuelven las clases de pack y avisamos por WhatsApp.`
+      : "Cancelar la clase?";
+    if (!window.confirm(warning)) return;
+    try {
+      const token = (await getToken()) ?? undefined;
+      const r = await api.cancelSession(id, token);
+      setMsg(r.message);
+      await load();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Error");
+    }
+  }
   if (!data) return <p className="text-sm text-stone-500">{msg ?? "Cargando…"}</p>;
   const s = data.session;
   return (
@@ -780,11 +856,18 @@ export function AcademiaSesion() {
           ← Grilla
         </Link>
         <h1 className="text-2xl font-semibold">
-          {s.offering_name} · {hhmm(s.starts_at)}
+          {s.offering_name} · {s.local_time}
         </h1>
         <p className="text-sm text-stone-600">
-          {s.coach_name} · {s.location_name} · {s.court_name}
+          {dayLongLabel(s.local_date)} · {s.coach_name} · {s.location_name} · {s.court_name}
         </p>
+        {s.cancelled === 1 ? (
+          <p className="text-sm text-red-700">Clase cancelada.</p>
+        ) : (
+          <Button type="button" variant="outline" onClick={() => void cancelClass()}>
+            Cancelar la clase
+          </Button>
+        )}
         {msg ? <p className="text-sm">{msg}</p> : null}
         <Card>
           <p className="mb-3 font-medium">Jugadores</p>
@@ -819,76 +902,6 @@ export function AcademiaSesion() {
   );
 }
 
-export function AcademiaAjustes() {
-  const { getToken } = useAuth();
-  const [hours, setHours] = useState("12");
-  const [msg, setMsg] = useState<string | null>(null);
-  const [bookerPath, setBookerPath] = useState("");
-  useEffect(() => {
-    void (async () => {
-      try {
-        const token = (await getToken()) ?? undefined;
-        const s = await api.settings(token);
-        setHours(String(s.cutoff_hours));
-        setBookerPath(s.booker_path);
-      } catch (e) {
-        setMsg(e instanceof Error ? e.message : "Error");
-      }
-    })();
-  }, [getToken]);
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setMsg(null);
-    try {
-      const token = (await getToken()) ?? undefined;
-      const r = await api.saveSettings(Number(hours), token);
-      setHours(String(r.cutoff_hours));
-      setMsg(r.message);
-    } catch (err) {
-      setMsg(err instanceof Error ? err.message : "Error");
-    }
-  }
-  return (
-    <RequireAcademia>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Reservas</h1>
-          <p className="mt-1 text-sm text-stone-600">Plazo de auto-reserva y de cancelación con devolución del pack.</p>
-        </div>
-        <AcademiaNav />
-        <Card className="max-w-sm space-y-3">
-          <form className="space-y-3" onSubmit={onSubmit}>
-            <label className="block text-sm">
-              Horas antes de la clase
-              <Input
-                type="number"
-                min={1}
-                max={72}
-                value={hours}
-                onChange={(e) => setHours(e.target.value)}
-                required
-              />
-            </label>
-            <p className="text-xs text-stone-500">
-              Default 12. El jugador no reserva ni cancela (con devolución) dentro de ese plazo. El escritorio de la
-              academia sí puede anotar después.
-            </p>
-            <Button type="submit">Guardar</Button>
-          </form>
-          {msg ? <p className="text-sm">{msg}</p> : null}
-        </Card>
-        {bookerPath ? (
-          <Card className="max-w-lg space-y-2">
-            <p className="text-sm font-medium">Link para jugadores</p>
-            <p className="break-all text-sm text-stone-600">{`${window.location.origin}${bookerPath}`}</p>
-            <p className="text-xs text-stone-500">Mandalo por WhatsApp. El slug no se cambia después.</p>
-          </Card>
-        ) : null}
-      </div>
-    </RequireAcademia>
-  );
-}
-
 const WEEKDAYS = [
   ["monday", "Lunes"],
   ["tuesday", "Martes"],
@@ -899,68 +912,339 @@ const WEEKDAYS = [
   ["sunday", "Domingo"],
 ] as const;
 
-export function AcademiaProfes() {
+function weekdayLabel(weekday: string): string {
+  return WEEKDAYS.find((w) => w[0] === weekday)?.[1] ?? weekday;
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block text-sm">
+      <span className="text-stone-600">{label}</span>
+      <span className="mt-1 block">{children}</span>
+    </label>
+  );
+}
+
+function Select({
+  value,
+  onChange,
+  children,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <select
+      className="h-10 w-full rounded-md border border-stone-300 bg-white px-2 text-sm"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {children}
+    </select>
+  );
+}
+
+/** One-off class outside the planilla madre. */
+function NuevaClase({ monday, onDone }: { monday: string; onDone: (message: string) => Promise<void> }) {
+  const { getToken } = useAuth();
+  const [cat, setCat] = useState<StaffCatalog | null>(null);
+  const [locationId, setLocationId] = useState("");
+  const [courtId, setCourtId] = useState("");
+  const [coachId, setCoachId] = useState("");
+  const [offeringId, setOfferingId] = useState("");
+  const [date, setDate] = useState(monday);
+  const [startTime, setStartTime] = useState("15:00");
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    void (async () => {
+      const token = (await getToken()) ?? undefined;
+      const c = await api.catalog(token);
+      setCat(c);
+      setLocationId(c.locations[0]?.id ?? "");
+      setCoachId(c.coaches[0]?.id ?? "");
+      setOfferingId(c.offerings[0]?.id ?? "");
+    })().catch((e: Error) => setMsg(e.message));
+  }, [getToken]);
+  const courts = (cat?.courts ?? []).filter((c) => c.location_id === locationId);
+  useEffect(() => {
+    if (courts.length && !courts.some((c) => c.id === courtId)) setCourtId(courts[0].id);
+  }, [courtId, courts]);
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setMsg(null);
+    try {
+      const token = (await getToken()) ?? undefined;
+      const r = await api.addSession({ offeringId, courtId, coachId, date, startTime }, token);
+      await onDone(r.message);
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Error");
+    }
+  }
+  if (!cat) return <p className="text-sm text-stone-500">{msg ?? "Cargando…"}</p>;
+  if (!cat.locations.length || !cat.offerings.length || !cat.coaches.length) {
+    return (
+      <Card className="max-w-lg space-y-2">
+        <p className="text-sm text-stone-600">
+          Falta cargar sedes, canchas, profes o tipos de clase antes de poder crear una.
+        </p>
+        <Link to="/academia/catalogo" className="text-sm underline">
+          Ir a Sedes y clases
+        </Link>
+      </Card>
+    );
+  }
+  return (
+    <Card className="max-w-2xl">
+      <p className="mb-3 font-medium">Nueva clase</p>
+      <form className="grid gap-3 sm:grid-cols-3" onSubmit={submit}>
+        <Field label="Día">
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+        </Field>
+        <Field label={`Hora (${cat.timezone})`}>
+          <Input type="time" step={300} value={startTime} onChange={(e) => setStartTime(e.target.value)} required />
+        </Field>
+        <Field label="Clase">
+          <Select value={offeringId} onChange={setOfferingId}>
+            {cat.offerings.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name} · {o.capacity} cupo(s)
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Sede">
+          <Select value={locationId} onChange={setLocationId}>
+            {cat.locations.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Cancha">
+          <Select value={courtId} onChange={setCourtId}>
+            {courts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Profe">
+          <Select value={coachId} onChange={setCoachId}>
+            {cat.coaches.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <div className="sm:col-span-3">
+          <Button type="submit">Crear</Button>
+          {msg ? <span className="ml-3 text-sm text-red-700">{msg}</span> : null}
+        </div>
+      </form>
+    </Card>
+  );
+}
+
+function AcademiaAjustesInner() {
+  const { getToken } = useAuth();
+  const [settings, setSettings] = useState<AcademySettings | null>(null);
+  const [name, setName] = useState("");
+  const [timezone, setTimezone] = useState("");
+  const [currency, setCurrency] = useState("");
+  const [hours, setHours] = useState("12");
+  const [hold, setHold] = useState("0");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const token = (await getToken()) ?? undefined;
+        const s = await api.settings(token);
+        setSettings(s);
+        setName(s.name);
+        setTimezone(s.timezone);
+        setCurrency(s.currency);
+        setHours(String(s.cutoff_hours));
+        setHold(String(s.hold_minutes));
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Error");
+      }
+    })();
+  }, [getToken]);
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setMsg(null);
+    setErr(null);
+    try {
+      const token = (await getToken()) ?? undefined;
+      const r = await api.saveSettings(
+        {
+          name,
+          timezone,
+          currency,
+          cutoff_hours: Number(hours),
+          hold_minutes: Number(hold),
+        },
+        token,
+      );
+      setSettings(r);
+      setMsg(r.message);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Error");
+    }
+  }
+  return (
+    <RequireAcademia>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold">Reservas</h1>
+          <p className="mt-1 text-sm text-stone-600">
+            Nombre, zona horaria y los plazos con los que el jugador reserva, cancela y paga.
+          </p>
+        </div>
+        <AcademiaNav />
+        <Card className="max-w-xl">
+          <form className="grid gap-4 sm:grid-cols-2" onSubmit={onSubmit}>
+            <Field label="Nombre de la academia">
+              <Input value={name} onChange={(e) => setName(e.target.value)} required />
+            </Field>
+            <Field label="Zona horaria">
+              <Input
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+                placeholder="America/Asuncion"
+                required
+              />
+            </Field>
+            <Field label="Moneda">
+              <Input
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+                maxLength={3}
+                placeholder="PYG"
+                required
+              />
+            </Field>
+            <Field label="Plazo de auto-reserva (horas)">
+              <Input type="number" min={1} max={72} value={hours} onChange={(e) => setHours(e.target.value)} required />
+            </Field>
+            <Field label="Vencimiento del pago (minutos)">
+              <Input
+                type="number"
+                min={0}
+                max={20160}
+                step={15}
+                value={hold}
+                onChange={(e) => setHold(e.target.value)}
+                required
+              />
+            </Field>
+            <div className="sm:col-span-2 space-y-2">
+              <p className="text-xs text-stone-500">
+                Los horarios de la grilla se leen en esa zona horaria. El jugador no reserva ni cancela (con devolución
+                del pack) dentro del plazo de auto-reserva; el escritorio de la academia sí.
+              </p>
+              <p className="text-xs text-stone-500">
+                Vencimiento del pago: una reserva web sin pagar se libera pasados esos minutos y el jugador recibe el
+                aviso. En 0 no vence nunca y el cupo queda tomado hasta que alguien lo marque.
+              </p>
+              <Button type="submit">Guardar</Button>
+              {msg ? <span className="ml-3 text-sm text-teal-800">{msg}</span> : null}
+              {err ? <span className="ml-3 text-sm text-red-700">{err}</span> : null}
+            </div>
+          </form>
+        </Card>
+        {settings ? (
+          <Card className="max-w-lg space-y-2">
+            <p className="text-sm font-medium">Link para jugadores</p>
+            <p className="break-all text-sm text-stone-600">{`${window.location.origin}${settings.booker_path}`}</p>
+            <p className="text-xs text-stone-500">Mandalo por WhatsApp. El slug no se cambia después.</p>
+          </Card>
+        ) : null}
+      </div>
+    </RequireAcademia>
+  );
+}
+
+function AcademiaProfesInner() {
   const { getToken } = useAuth();
   const [coachId, setCoachId] = useState("");
-  const [coaches, setCoaches] = useState<Coach[]>([]);
-  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
-  const [courts, setCourts] = useState<{ id: string; location_id: string; name: string }[]>([]);
-  const [offerings, setOfferings] = useState<{ id: string; name: string }[]>([]);
-  const [templates, setTemplates] = useState<
-    Array<{
-      id: string;
-      coach_id: string;
-      weekday: string;
-      start_time: string;
-      end_time: string;
-      location_name: string;
-      court_name: string;
-      offering_name: string;
-      location_id: string;
-    }>
-  >([]);
+  const [cat, setCat] = useState<StaffCatalog | null>(null);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [availability, setAvailability] = useState<Availability[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [locationId, setLocationId] = useState("");
   const [courtId, setCourtId] = useState("");
   const [offeringId, setOfferingId] = useState("");
   const [weekday, setWeekday] = useState("monday");
   const [startTime, setStartTime] = useState("15:00");
+  const [avLocationId, setAvLocationId] = useState("");
+  const [avWeekday, setAvWeekday] = useState("monday");
+  const [avStart, setAvStart] = useState("06:00");
+  const [avEnd, setAvEnd] = useState("11:00");
 
   async function load() {
     const token = (await getToken()) ?? undefined;
-    const [cat, tpl] = await Promise.all([api.catalog(token), api.templates(token)]);
-    setCoaches(cat.coaches);
-    setLocations(cat.locations);
-    setCourts(cat.courts);
-    setOfferings(cat.offerings);
+    const [c, tpl, av] = await Promise.all([api.catalog(token), api.templates(token), api.availability(token)]);
+    setCat(c);
     setTemplates(tpl.templates);
-    if (!coachId && cat.coaches[0]) setCoachId(cat.coaches[0].id);
-    if (!locationId && cat.locations[0]) setLocationId(cat.locations[0].id);
-    if (!offeringId && cat.offerings[0]) setOfferingId(cat.offerings[0].id);
+    setAvailability(av.availability);
+    setCoachId((prev) => prev || c.coaches[0]?.id || "");
+    setLocationId((prev) => prev || c.locations[0]?.id || "");
+    setAvLocationId((prev) => prev || c.locations[0]?.id || "");
+    setOfferingId((prev) => prev || c.offerings[0]?.id || "");
   }
 
   useEffect(() => {
     load().catch((e: Error) => setMsg(e.message));
   }, []);
 
-  const courtsHere = courts.filter((c) => c.location_id === locationId);
+  const courtsHere = (cat?.courts ?? []).filter((c) => c.location_id === locationId);
   const mine = templates.filter((t) => t.coach_id === coachId);
-  const selectedCoach = coaches.find((c) => c.id === coachId);
+  const myBlocks = availability.filter((a) => a.coach_id === coachId);
+  const selectedCoach = cat?.coaches.find((c) => c.id === coachId);
+
+  async function addBlock(e: FormEvent) {
+    e.preventDefault();
+    setMsg(null);
+    try {
+      const token = (await getToken()) ?? undefined;
+      const r = await api.addAvailability(
+        { coachId, locationId: avLocationId, weekday: avWeekday, startTime: avStart, endTime: avEnd },
+        token,
+      );
+      setAvailability(r.availability);
+      setMsg("Franja agregada. Ya aparece como huecos en el booker.");
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Error");
+    }
+  }
+
+  async function removeBlock(id: string) {
+    try {
+      const token = (await getToken()) ?? undefined;
+      const r = await api.deleteAvailability(id, token);
+      setAvailability(r.availability);
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Error");
+    }
+  }
 
   async function addSlot(e: FormEvent) {
     e.preventDefault();
     setMsg(null);
-    const token = (await getToken()) ?? undefined;
     const court = courtId || courtsHere[0]?.id;
     if (!court) {
       setMsg("Falta cancha en esa sede.");
       return;
     }
     try {
-      await api.addTemplate(
-        { offeringId, locationId, courtId: court, coachId, weekday, startTime },
-        token,
-      );
+      const token = (await getToken()) ?? undefined;
+      await api.addTemplate({ offeringId, locationId, courtId: court, coachId, weekday, startTime }, token);
       await load();
       setMsg("Horario agregado a la planilla madre.");
     } catch (err) {
@@ -979,11 +1263,21 @@ export function AcademiaProfes() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold">Profes</h1>
-          <p className="mt-1 text-sm text-stone-600">Disponibilidad semanal (planilla madre) por entrenador.</p>
+          <p className="mt-1 text-sm text-stone-600">
+            Franjas de presencia por entrenador y, si la academia las usa, clases clavadas.
+          </p>
         </div>
         <AcademiaNav />
+        {cat && cat.coaches.length === 0 ? (
+          <Card className="max-w-lg space-y-2">
+            <p className="text-sm text-stone-600">Todavía no hay profes cargados.</p>
+            <Link to="/academia/catalogo" className="text-sm underline">
+              Cargar profes
+            </Link>
+          </Card>
+        ) : null}
         <div className="flex flex-wrap gap-3">
-          {coaches.map((c) => {
+          {(cat?.coaches ?? []).map((c) => {
             const on = coachId === c.id;
             const langs = languageLabels(c.languages);
             return (
@@ -997,7 +1291,9 @@ export function AcademiaProfes() {
                 <span>
                   <span className="block">{c.name}</span>
                   {langs.length ? (
-                    <span className={`block text-[10px] ${on ? "text-stone-300" : "text-stone-500"}`}>{langs.join(" · ")}</span>
+                    <span className={`block text-[10px] ${on ? "text-stone-300" : "text-stone-500"}`}>
+                      {langs.join(" · ")}
+                    </span>
                   ) : null}
                 </span>
               </button>
@@ -1005,76 +1301,408 @@ export function AcademiaProfes() {
           })}
         </div>
         {selectedCoach?.bio ? <p className="text-sm text-stone-600">{selectedCoach.bio}</p> : null}
-        {msg ? <p className="text-sm">{msg}</p> : null}
+        {msg ? <p className="text-sm text-stone-700">{msg}</p> : null}
+
         <Card>
-          <p className="mb-3 font-medium">Horarios fijos</p>
+          <p className="font-medium">Franjas de presencia</p>
+          <p className="mb-3 text-xs text-stone-500">
+            La madre del booker: cada franja se abre como huecos de una hora que el jugador convierte en clase al
+            reservar.
+          </p>
+          <ul className="divide-y text-sm">
+            {myBlocks.map((a) => (
+              <li key={a.id} className="flex items-center justify-between py-2">
+                <span>
+                  {weekdayLabel(a.weekday)} {a.start_time}–{a.end_time}
+                  <span className="text-stone-400"> · {a.location_name}</span>
+                </span>
+                <button type="button" className="text-xs underline" onClick={() => void removeBlock(a.id)}>
+                  Quitar
+                </button>
+              </li>
+            ))}
+            {myBlocks.length === 0 ? <li className="py-2 text-stone-500">Sin franjas.</li> : null}
+          </ul>
+          {coachId && cat?.locations.length ? (
+            <form className="mt-4 grid gap-3 border-t border-stone-100 pt-4 sm:grid-cols-5" onSubmit={addBlock}>
+              <Field label="Día">
+                <Select value={avWeekday} onChange={setAvWeekday}>
+                  {WEEKDAYS.map(([id, label]) => (
+                    <option key={id} value={id}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Desde">
+                <Input type="time" step={3600} value={avStart} onChange={(e) => setAvStart(e.target.value)} required />
+              </Field>
+              <Field label="Hasta">
+                <Input type="time" step={3600} value={avEnd} onChange={(e) => setAvEnd(e.target.value)} required />
+              </Field>
+              <Field label="Sede">
+                <Select value={avLocationId} onChange={setAvLocationId}>
+                  {(cat?.locations ?? []).map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <div className="flex items-end">
+                <Button type="submit">Agregar</Button>
+              </div>
+            </form>
+          ) : null}
+        </Card>
+
+        <Card>
+          <p className="font-medium">Clases clavadas</p>
+          <p className="mb-3 text-xs text-stone-500">
+            Opcional: una fila fija por día y hora que se materializa sola cada semana.
+          </p>
           <ul className="divide-y text-sm">
             {mine.map((t) => (
               <li key={t.id} className="flex items-center justify-between py-2">
                 <span>
-                  {WEEKDAYS.find((w) => w[0] === t.weekday)?.[1] ?? t.weekday} {t.start_time}–{t.end_time}
+                  {weekdayLabel(t.weekday)} {t.start_time}–{t.end_time}
                   <span className="text-stone-400">
                     {" "}
                     · {t.location_name} · {t.court_name} · {t.offering_name}
                   </span>
                 </span>
-                <button type="button" className="text-xs underline" onClick={() => removeSlot(t.id)}>
+                <button type="button" className="text-xs underline" onClick={() => void removeSlot(t.id)}>
                   Quitar
                 </button>
               </li>
             ))}
-            {mine.length === 0 ? <li className="py-2 text-stone-500">Sin horarios.</li> : null}
+            {mine.length === 0 ? <li className="py-2 text-stone-500">Sin clases clavadas.</li> : null}
           </ul>
+          {coachId && courtsHere.length && cat?.offerings.length ? (
+            <form className="mt-4 grid gap-3 border-t border-stone-100 pt-4 sm:grid-cols-5" onSubmit={addSlot}>
+              <Field label="Día">
+                <Select value={weekday} onChange={setWeekday}>
+                  {WEEKDAYS.map(([id, label]) => (
+                    <option key={id} value={id}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Hora">
+                <Input type="time" step={300} value={startTime} onChange={(e) => setStartTime(e.target.value)} required />
+              </Field>
+              <Field label="Sede">
+                <Select value={locationId} onChange={setLocationId}>
+                  {(cat?.locations ?? []).map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Cancha">
+                <Select value={courtId || courtsHere[0]?.id || ""} onChange={setCourtId}>
+                  {courtsHere.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Clase">
+                <Select value={offeringId} onChange={setOfferingId}>
+                  {(cat?.offerings ?? []).map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <div className="sm:col-span-5">
+                <Button type="submit">Agregar</Button>
+              </div>
+            </form>
+          ) : null}
         </Card>
-        <Card className="max-w-lg">
-          <p className="mb-3 font-medium">Agregar a la planilla</p>
-          <form className="grid gap-3 sm:grid-cols-2" onSubmit={addSlot}>
-            <label className="text-sm">
-              Día
-              <select className="mt-1 h-10 w-full rounded-lg border px-2 text-sm" value={weekday} onChange={(e) => setWeekday(e.target.value)}>
-                {WEEKDAYS.map(([id, label]) => (
-                  <option key={id} value={id}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm">
-              Hora
-              <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} required />
-            </label>
-            <label className="text-sm">
-              Sede
-              <select className="mt-1 h-10 w-full rounded-lg border px-2 text-sm" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm">
-              Cancha
-              <select className="mt-1 h-10 w-full rounded-lg border px-2 text-sm" value={courtId} onChange={(e) => setCourtId(e.target.value)}>
-                {courtsHere.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm sm:col-span-2">
-              Clase
-              <select className="mt-1 h-10 w-full rounded-lg border px-2 text-sm" value={offeringId} onChange={(e) => setOfferingId(e.target.value)}>
-                {offerings.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="sm:col-span-2">
-              <Button type="submit">Agregar</Button>
+      </div>
+    </RequireAcademia>
+  );
+}
+
+/**
+ * Sedes, canchas, profes and class types. Without this screen onboarding an
+ * academia meant editing `seed.ts` and deploying.
+ */
+function AcademiaCatalogoInner() {
+  const { getToken } = useAuth();
+  const [cat, setCat] = useState<StaffCatalog | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const [locName, setLocName] = useState("");
+  const [locAddress, setLocAddress] = useState("");
+  const [locMaps, setLocMaps] = useState("");
+  const [courtFor, setCourtFor] = useState("");
+  const [courtName, setCourtName] = useState("");
+  const [coachName, setCoachName] = useState("");
+  const [coachLangs, setCoachLangs] = useState("es");
+  const [coachBio, setCoachBio] = useState("");
+  const [offName, setOffName] = useState("");
+  const [offCapacity, setOffCapacity] = useState("4");
+  const [offDuration, setOffDuration] = useState("60");
+  const [offPrice, setOffPrice] = useState("0");
+
+  async function load() {
+    const token = (await getToken()) ?? undefined;
+    setCat(await api.catalog(token));
+  }
+  useEffect(() => {
+    load().catch((e: Error) => setErr(e.message));
+  }, []);
+
+  async function run(what: string, action: (token?: string) => Promise<unknown>) {
+    setMsg(null);
+    setErr(null);
+    try {
+      const token = (await getToken()) ?? undefined;
+      await action(token);
+      await load();
+      setMsg(what);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Error");
+    }
+  }
+
+  if (!cat) return <p className="text-sm text-stone-500">{err ?? "Cargando…"}</p>;
+  const currency = (n: number) => n.toLocaleString("es-PY");
+
+  return (
+    <RequireAcademia>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold">Sedes y clases</h1>
+          <p className="mt-1 text-sm text-stone-600">
+            Lo que la grilla necesita para existir: sedes, canchas, profes y tipos de clase.
+          </p>
+        </div>
+        <AcademiaNav />
+        {msg ? <p className="text-sm text-teal-800">{msg}</p> : null}
+        {err ? <p className="text-sm text-red-700">{err}</p> : null}
+
+        <Card>
+          <p className="mb-3 font-medium">Sedes y canchas</p>
+          <ul className="divide-y text-sm">
+            {cat.locations.map((l) => {
+              const courts = cat.courts.filter((c) => c.location_id === l.id);
+              return (
+                <li key={l.id} className="py-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span>
+                      <span className="font-medium">{l.name}</span>
+                      {l.address ? <span className="text-stone-400"> · {l.address}</span> : null}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-xs underline"
+                      onClick={() => void run("Sede borrada.", (t) => api.deleteLocation(l.id, t))}
+                    >
+                      Borrar sede
+                    </button>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {courts.map((c) => (
+                      <span key={c.id} className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1 text-xs">
+                        {c.name}
+                        <button
+                          type="button"
+                          className="text-stone-500 underline"
+                          onClick={() => void run("Cancha borrada.", (t) => api.deleteCourt(c.id, t))}
+                        >
+                          quitar
+                        </button>
+                      </span>
+                    ))}
+                    {courts.length === 0 ? <span className="text-xs text-stone-500">Sin canchas.</span> : null}
+                    <button
+                      type="button"
+                      className="text-xs underline"
+                      onClick={() => {
+                        setCourtFor(l.id);
+                        setCourtName(`Cancha ${courts.length + 1}`);
+                      }}
+                    >
+                      + cancha
+                    </button>
+                  </div>
+                  {courtFor === l.id ? (
+                    <form
+                      className="mt-3 flex flex-wrap items-end gap-2"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void run("Cancha agregada.", (t) => api.addCourt({ locationId: l.id, name: courtName }, t)).then(
+                          () => setCourtFor(""),
+                        );
+                      }}
+                    >
+                      <span className="w-48">
+                        <Input value={courtName} onChange={(e) => setCourtName(e.target.value)} required />
+                      </span>
+                      <Button type="submit">Agregar</Button>
+                      <Button type="button" variant="ghost" onClick={() => setCourtFor("")}>
+                        Cancelar
+                      </Button>
+                    </form>
+                  ) : null}
+                </li>
+              );
+            })}
+            {cat.locations.length === 0 ? <li className="py-2 text-stone-500">Sin sedes todavía.</li> : null}
+          </ul>
+          <form
+            className="mt-4 grid gap-3 border-t border-stone-100 pt-4 sm:grid-cols-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run("Sede agregada.", (t) =>
+                api.addLocation({ name: locName, address: locAddress, mapsUrl: locMaps }, t),
+              ).then(() => {
+                setLocName("");
+                setLocAddress("");
+                setLocMaps("");
+              });
+            }}
+          >
+            <Field label="Nueva sede">
+              <Input value={locName} onChange={(e) => setLocName(e.target.value)} required />
+            </Field>
+            <Field label="Dirección">
+              <Input value={locAddress} onChange={(e) => setLocAddress(e.target.value)} />
+            </Field>
+            <Field label="Link de Maps">
+              <Input value={locMaps} onChange={(e) => setLocMaps(e.target.value)} />
+            </Field>
+            <div className="flex items-end">
+              <Button type="submit">Agregar sede</Button>
+            </div>
+          </form>
+        </Card>
+
+        <Card>
+          <p className="mb-3 font-medium">Profes</p>
+          <ul className="divide-y text-sm">
+            {cat.coaches.map((c) => (
+              <li key={c.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
+                <span>
+                  <span className="font-medium">{c.name}</span>
+                  <span className="text-stone-400"> · {languageLabels(c.languages).join(" · ") || "sin idiomas"}</span>
+                </span>
+                <button
+                  type="button"
+                  className="text-xs underline"
+                  onClick={() => void run("Profe borrado.", (t) => api.deleteCoach(c.id, t))}
+                >
+                  Borrar
+                </button>
+              </li>
+            ))}
+            {cat.coaches.length === 0 ? <li className="py-2 text-stone-500">Sin profes todavía.</li> : null}
+          </ul>
+          <form
+            className="mt-4 grid gap-3 border-t border-stone-100 pt-4 sm:grid-cols-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run("Profe agregado.", (t) =>
+                api.addCoach({ name: coachName, languages: coachLangs, bio: coachBio }, t),
+              ).then(() => {
+                setCoachName("");
+                setCoachBio("");
+              });
+            }}
+          >
+            <Field label="Nombre">
+              <Input value={coachName} onChange={(e) => setCoachName(e.target.value)} required />
+            </Field>
+            <Field label="Idiomas (es, pt, gn)">
+              <Input value={coachLangs} onChange={(e) => setCoachLangs(e.target.value)} />
+            </Field>
+            <Field label="Bio">
+              <Input value={coachBio} onChange={(e) => setCoachBio(e.target.value)} />
+            </Field>
+            <div className="flex items-end">
+              <Button type="submit">Agregar profe</Button>
+            </div>
+          </form>
+        </Card>
+
+        <Card>
+          <p className="mb-3 font-medium">Tipos de clase</p>
+          <ul className="divide-y text-sm">
+            {cat.offerings.map((o) => (
+              <li key={o.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
+                <span>
+                  <span className="font-medium">{o.name}</span>
+                  <span className="text-stone-400">
+                    {" "}
+                    · {o.capacity} cupo(s) · {o.duration_minutes} min · {currency(o.price)}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="text-xs underline"
+                  onClick={() => void run("Clase borrada.", (t) => api.deleteOffering(o.id, t))}
+                >
+                  Borrar
+                </button>
+              </li>
+            ))}
+            {cat.offerings.length === 0 ? <li className="py-2 text-stone-500">Sin tipos de clase.</li> : null}
+          </ul>
+          <form
+            className="mt-4 grid gap-3 border-t border-stone-100 pt-4 sm:grid-cols-5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run("Clase agregada.", (t) =>
+                api.addOffering(
+                  {
+                    name: offName,
+                    capacity: Number(offCapacity),
+                    durationMinutes: Number(offDuration),
+                    price: Number(offPrice),
+                  },
+                  t,
+                ),
+              ).then(() => setOffName(""));
+            }}
+          >
+            <Field label="Nombre">
+              <Input value={offName} onChange={(e) => setOffName(e.target.value)} required />
+            </Field>
+            <Field label="Cupos">
+              <Input
+                type="number"
+                min={1}
+                max={12}
+                value={offCapacity}
+                onChange={(e) => setOffCapacity(e.target.value)}
+                required
+              />
+            </Field>
+            <Field label="Minutos">
+              <Input
+                type="number"
+                min={15}
+                max={240}
+                step={5}
+                value={offDuration}
+                onChange={(e) => setOffDuration(e.target.value)}
+                required
+              />
+            </Field>
+            <Field label="Precio">
+              <Input type="number" min={0} value={offPrice} onChange={(e) => setOffPrice(e.target.value)} required />
+            </Field>
+            <div className="flex items-end">
+              <Button type="submit">Agregar clase</Button>
             </div>
           </form>
         </Card>
@@ -1082,3 +1710,9 @@ export function AcademiaProfes() {
     </RequireAcademia>
   );
 }
+
+export const Academia = staffPage(AcademiaInner);
+export const AcademiaSesion = staffPage(AcademiaSesionInner);
+export const AcademiaProfes = staffPage(AcademiaProfesInner);
+export const AcademiaCatalogo = staffPage(AcademiaCatalogoInner);
+export const AcademiaAjustes = staffPage(AcademiaAjustesInner);

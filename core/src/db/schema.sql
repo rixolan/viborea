@@ -6,6 +6,7 @@ CREATE TABLE academy (
   currency TEXT NOT NULL,
   timezone TEXT NOT NULL,
   cutoff_hours INTEGER NOT NULL DEFAULT 12,
+  hold_minutes INTEGER NOT NULL DEFAULT 0,
   clerk_org_id TEXT UNIQUE
 );
 
@@ -103,7 +104,9 @@ CREATE TABLE bookings (
   status TEXT NOT NULL,
   channel TEXT NOT NULL DEFAULT 'admin',
   pack_id TEXT REFERENCES packs(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   reminded_at TIMESTAMPTZ,
+  reminder_attempts INTEGER NOT NULL DEFAULT 0,
   UNIQUE (session_id, student_id)
 );
 
@@ -128,6 +131,17 @@ CREATE TABLE coach_availability (
   end_time TEXT NOT NULL
 );
 
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+-- The engine rule, enforced by Postgres and not only by TypeScript: one court
+-- and one coach cannot hold two live sessions over the same interval.
+ALTER TABLE sessions ADD CONSTRAINT sessions_court_no_overlap
+  EXCLUDE USING gist (court_id WITH =, tstzrange(starts_at, ends_at) WITH &&)
+  WHERE (NOT cancelled);
+ALTER TABLE sessions ADD CONSTRAINT sessions_coach_no_overlap
+  EXCLUDE USING gist (coach_id WITH =, tstzrange(starts_at, ends_at) WITH &&)
+  WHERE (NOT cancelled);
+
 CREATE INDEX idx_sessions_academy_starts ON sessions (academy_id, starts_at);
 CREATE INDEX idx_sessions_court_time ON sessions (court_id, starts_at, ends_at);
 CREATE INDEX idx_sessions_coach_time ON sessions (coach_id, starts_at, ends_at);
@@ -136,4 +150,9 @@ CREATE INDEX idx_packs_student ON packs (student_id);
 CREATE INDEX idx_locations_academy ON locations (academy_id);
 CREATE INDEX idx_students_academy ON students (academy_id);
 CREATE INDEX idx_availability_academy ON coach_availability (academy_id, weekday);
+CREATE INDEX idx_availability_coach ON coach_availability (coach_id, weekday);
+CREATE UNIQUE INDEX coach_availability_slot
+  ON coach_availability (academy_id, coach_id, weekday, start_time);
+CREATE INDEX idx_bookings_student ON bookings (student_id);
+CREATE INDEX idx_bookings_reminders ON bookings (status, reminded_at);
 

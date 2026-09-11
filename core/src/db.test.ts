@@ -152,7 +152,7 @@ describe.skipIf(!url)("catalogo DG", () => {
     expect(academies.some((a) => /alameda/i.test(a.name))).toBe(false);
     const me = await handleApi(new Request("http://localhost/api/a/academiadg/me"), db);
     expect(me?.status).toBe(200);
-    expect(await me!.json()).toEqual({ student: null, bookings: [] });
+    expect(await me!.json()).toEqual({ student: null, bookings: [], timezone: "America/Asuncion" });
     await db.end();
   });
 });

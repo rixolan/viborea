@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { hoursInRange, openSlotId, parseOpenSlotId } from "./availability";
+import { blocksOverlap, hoursInRange, openSlotId, parseOpenSlotId, slotStarts } from "./availability";
+import type { AvailabilityBlock } from "./availability";
 
 describe("hoursInRange", () => {
   it("6:00 a 11:00 son cinco clases, la última empieza 10:00", () => {
@@ -20,5 +21,33 @@ describe("openSlotId", () => {
       coachId: "coach-fernando-laval",
       startsAt: starts,
     });
+  });
+});
+
+describe("slotStarts", () => {
+  it("el hueco de 06:00 en Asunción es 09:00Z", () => {
+    expect(slotStarts("2026-09-14", "06:00", "America/Asuncion").toISOString()).toBe(
+      "2026-09-14T09:00:00.000Z",
+    );
+  });
+});
+
+describe("blocksOverlap", () => {
+  const block = (over: Partial<AvailabilityBlock> = {}): AvailabilityBlock => ({
+    coachId: "coach-1",
+    locationId: "loc-1",
+    weekday: "monday",
+    startTime: "06:00",
+    endTime: "11:00",
+    ...over,
+  });
+
+  it("el mismo profe no puede estar en dos sedes a la vez", () => {
+    expect(blocksOverlap(block(), block({ locationId: "loc-2", startTime: "10:00", endTime: "12:00" }))).toBe(true);
+  });
+
+  it("bloques pegados y otros días no se solapan", () => {
+    expect(blocksOverlap(block(), block({ startTime: "11:00", endTime: "13:00" }))).toBe(false);
+    expect(blocksOverlap(block(), block({ weekday: "tuesday" }))).toBe(false);
   });
 });

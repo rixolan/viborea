@@ -1,6 +1,7 @@
 import { verifyToken } from "@clerk/backend";
 import { academyById, academyBySlug, ensureAcademyFromOrg, type Academy, type Db } from "./db";
 import { DG_ACADEMY_ID } from "./seed";
+import { isProduction } from "./secret";
 
 export type ClerkAuth = {
   userId: string;
@@ -45,6 +46,12 @@ export async function readClerk(req: Request): Promise<ClerkAuth | null> {
 export async function requireAcademy(req: Request, db: Db): Promise<{ academy: Academy } | Response> {
   const secret = clerkSecret();
   if (!secret) {
+    // Without Clerk there is no way to tell staff from anyone on the internet.
+    // In production that must be a hard stop, never the pilot academy wide open.
+    if (isProduction()) {
+      console.error("CLERK_SECRET_KEY ausente: /api staff rechazado");
+      return Response.json({ error: "Autenticación no configurada" }, { status: 503 });
+    }
     const ac = (await academyBySlug(db, "academiadg")) ?? (await academyById(db, DG_ACADEMY_ID));
     return { academy: ac };
   }

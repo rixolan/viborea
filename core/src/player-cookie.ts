@@ -1,11 +1,7 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { isProduction, signPayload, verifyPayload } from "./secret";
 
-function secret(): string {
-  return process.env.PLAYER_COOKIE_SECRET ?? process.env.CLERK_SECRET_KEY ?? "dev-player-cookie";
-}
-
-function sign(academyId: string, studentId: string): string {
-  return createHmac("sha256", secret()).update(`${academyId}:${studentId}`).digest("base64url");
+function payload(academyId: string, studentId: string): string {
+  return `${academyId}:${studentId}`;
 }
 
 export function cookieName(slug: string): string {
@@ -13,7 +9,7 @@ export function cookieName(slug: string): string {
 }
 
 export function encodePlayerCookie(academyId: string, studentId: string): string {
-  return `${academyId}.${studentId}.${sign(academyId, studentId)}`;
+  return `${academyId}.${studentId}.${signPayload(payload(academyId, studentId))}`;
 }
 
 export function decodePlayerCookie(academyId: string, raw: string | undefined): string | null {
@@ -22,10 +18,7 @@ export function decodePlayerCookie(academyId: string, raw: string | undefined): 
   if (parts.length !== 3) return null;
   const [aid, studentId, mac] = parts;
   if (aid !== academyId || !studentId || !mac) return null;
-  const expected = sign(academyId, studentId);
-  const a = Buffer.from(mac);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  if (!verifyPayload(payload(academyId, studentId), mac)) return null;
   return studentId;
 }
 
@@ -38,11 +31,16 @@ export function readCookie(header: string | null, name: string): string | undefi
   return undefined;
 }
 
+/** Six months. `Secure` off in dev so http://localhost still keeps the ficha. */
+function attributes(): string {
+  return `Path=/; HttpOnly; SameSite=Lax${isProduction() ? "; Secure" : ""}`;
+}
+
 export function setPlayerCookieHeader(slug: string, academyId: string, studentId: string): string {
   const value = encodeURIComponent(encodePlayerCookie(academyId, studentId));
-  return `${cookieName(slug)}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=15552000`;
+  return `${cookieName(slug)}=${value}; ${attributes()}; Max-Age=15552000`;
 }
 
 export function clearPlayerCookieHeader(slug: string): string {
-  return `${cookieName(slug)}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  return `${cookieName(slug)}=; ${attributes()}; Max-Age=0`;
 }

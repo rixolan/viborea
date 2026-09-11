@@ -3,9 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
 import { api, type Coach, type HistoryBooking, type Location, type Session, type Student } from "./api";
 import { cn } from "./ui";
-
-const DOW = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"];
-const MONTH_SHORT = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+import { DOW_HEADINGS as DOW, addDaysToKey, dayLabel, thisMondayKey, weekLabel, whenAt } from "./time";
 
 const COACH_PHOTOS = new Set([
   "coach-fernando-laval",
@@ -36,46 +34,19 @@ export function languageLabels(codes: string[] | undefined) {
   return (codes ?? []).map((code) => LANGUAGE_LABELS[code] ?? code);
 }
 
-function mondayISO(d = new Date()) {
-  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-  const day = x.getUTCDay() || 7;
-  x.setUTCDate(x.getUTCDate() - day + 1);
-  return x.toISOString().slice(0, 10);
-}
-
-function addDays(monday: string, n: number) {
-  const d = new Date(`${monday}T00:00:00.000Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d;
-}
-
 function openSession(s: Session, now = new Date()) {
   return !s.cancelled && s.booked < s.capacity && new Date(s.starts_at) > now;
 }
 
-function formatTime(iso: string) {
-  const d = new Date(iso);
-  const h = d.getUTCHours();
-  const min = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${String(h).padStart(2, "0")}:${min}`;
-}
-
-function weekLabel(monday: string) {
-  const a = addDays(monday, 0);
-  const b = addDays(monday, 6);
-  return `${a.getUTCDate()}–${b.getUTCDate()} ${MONTH_SHORT[b.getUTCMonth()]} ${b.getUTCFullYear()}`;
-}
-
 function dayHeading(monday: string, offset: number) {
-  const d = addDays(monday, offset);
-  return `${DOW[offset].slice(0, 3)} ${d.getUTCDate()}`;
+  return `${DOW[offset].slice(0, 3)} ${dayLabel(addDaysToKey(monday, offset)).split(" ")[1]}`;
 }
 
 function BookerGrid({ slug }: { slug: string }) {
   const nav = useNavigate();
   const [locationId, setLocationId] = useState("");
   const [coachId, setCoachId] = useState<string | null>(null);
-  const [monday, setMonday] = useState(mondayISO());
+  const [monday, setMonday] = useState(thisMondayKey());
   const [sessions, setSessions] = useState<Session[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [coaches, setCoaches] = useState<Coach[]>([]);
@@ -97,7 +68,12 @@ function BookerGrid({ slug }: { slug: string }) {
     if (!locationId) return;
     api
       .bookerWeek(slug, monday)
-      .then((r) => setSessions(r.sessions.filter((s) => !s.cancelled)))
+      .then((r) => {
+        // The server answers with the Monday it actually resolved in the
+        // academy's timezone; follow it so the grid and the header agree.
+        if (r.monday !== monday) setMonday(r.monday);
+        setSessions(r.sessions.filter((s) => !s.cancelled));
+      })
       .catch((e: Error) => setError(e.message));
   }, [monday, locationId, slug]);
 
@@ -128,8 +104,7 @@ function BookerGrid({ slug }: { slug: string }) {
   }
 
   function shiftWeek(delta: number) {
-    const d = addDays(monday, delta * 7);
-    setMonday(d.toISOString().slice(0, 10));
+    setMonday(addDaysToKey(monday, delta * 7));
   }
 
   const chip = (on: boolean) =>
@@ -256,8 +231,8 @@ function BookerGrid({ slug }: { slug: string }) {
           ) : null}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
             {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
-              const dayIso = addDays(monday, offset).toISOString().slice(0, 10);
-              const daySlots = slots.filter((s) => s.starts_at.slice(0, 10) === dayIso);
+              const dayKey = addDaysToKey(monday, offset);
+              const daySlots = slots.filter((s) => s.local_date === dayKey);
               return (
                 <div key={offset}>
                   <p className="mb-3 text-center text-[11px] font-medium tracking-wide text-stone-500">
@@ -271,7 +246,7 @@ function BookerGrid({ slug }: { slug: string }) {
                         onClick={() => nav(`/reservar/${slug}/${encodeURIComponent(s.id)}`)}
                         className="rounded-md border border-stone-200 bg-white px-2 py-3 text-center text-sm hover:border-stone-900"
                       >
-                        {formatTime(s.starts_at)}
+                        {s.local_time}
                         {coachId === "" ? (
                           <span className="mt-0.5 block text-[10px] text-stone-500">{s.coach_name}</span>
                         ) : null}
@@ -301,14 +276,6 @@ const STATUS: Record<string, string> = {
   waitlisted: "Lista de espera",
   no_show: "No vino",
 };
-
-function formatWhen(iso: string) {
-  const d = new Date(iso);
-  const days = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
-  const h = String(d.getUTCHours()).padStart(2, "0");
-  const m = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${days[d.getUTCDay()]} ${d.getUTCDate()} ${MONTH_SHORT[d.getUTCMonth()]} · ${h}:${m}`;
-}
 
 function PlayerPanel({
   slug,
@@ -423,7 +390,7 @@ function HistoryRow({ b }: { b: HistoryBooking }) {
   return (
     <li className="flex flex-wrap items-baseline justify-between gap-2 py-2 text-sm">
       <div>
-        <p className="font-medium">{formatWhen(b.starts_at)}</p>
+        <p className="font-medium">{whenAt(b.starts_at, b.time_zone)}</p>
         <p className="text-stone-600">
           {b.coach_name} · {b.location_name} · {b.court_name}
         </p>

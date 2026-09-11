@@ -23,7 +23,8 @@ export function digits(phone: string): string {
   return d;
 }
 
-type FetchLike = typeof fetch;
+/** Just enough of `fetch` to POST JSON. `typeof fetch` also demands preconnect. */
+export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
 async function graphPost(
   cfg: WhatsappConfig,

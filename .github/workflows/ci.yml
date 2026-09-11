@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core:
+    name: core (Bun + Postgres)
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:18
+        env:
+          POSTGRES_USER: viborea
+          POSTGRES_PASSWORD: viborea
+          POSTGRES_DB: viborea
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U viborea -d viborea"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - run: bun install --frozen-lockfile
+        working-directory: core
+      - name: Typecheck
+        run: bunx tsc --noEmit -p tsconfig.json
+        working-directory: core
+      - name: Test (domain + Postgres)
+        run: bun test
+        working-directory: core
+        env:
+          # Without this the Postgres-backed tests skip themselves and the
+          # persistence layer ships untested.
+          DATABASE_URL: postgres://viborea:viborea@127.0.0.1:5432/viborea
+      - name: Migrations are idempotent
+        run: bun -e 'import { openDb } from "./src/db"; const db = await openDb(); await db.end();'
+        working-directory: core
+        env:
+          DATABASE_URL: postgres://viborea:viborea@127.0.0.1:5432/viborea
+
+  web:
+    name: web (Vite SPA)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+      - run: bun install --frozen-lockfile
+        working-directory: web
+      - name: Typecheck
+        run: bunx tsc --noEmit -p tsconfig.json
+        working-directory: web
+      - run: bun test
+        working-directory: web
+      - run: bun run build
+        working-directory: web
+
+  image:
+    name: docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the production image
+        run: docker build -t viborea-ci .

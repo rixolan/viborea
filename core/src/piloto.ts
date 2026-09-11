@@ -1,14 +1,15 @@
 import {
   type Db,
+  academyById,
   activePack,
-  addDays,
   buyPack,
   findOrCreateStudent,
-  mondayOf,
   publicBook,
   setBookingStatus,
   weekGrid,
+  weekOfAcademy,
 } from "./db";
+import { addDaysToKey } from "./domain/timezone";
 import type { PackAlert } from "./domain/pack";
 import { parseCategory, parseSide, type PlayingSide, type StudentCategory } from "./domain/student";
 import type { BookingStatus } from "./domain/types";
@@ -33,8 +34,9 @@ export type PilotoResult = {
 };
 
 export async function pilotoReserva(db: Db, input: PilotoInput, now = new Date()): Promise<PilotoResult> {
-  const monday = addDays(mondayOf(now), 7);
   const academyId = DG_ACADEMY_ID;
+  // Next week as the academia's calendar sees it, not as UTC does.
+  const monday = addDaysToKey(weekOfAcademy(await academyById(db, academyId), now).mondayKey, 7);
   const student = await findOrCreateStudent(db, academyId, input.name, input.phone, {
     category: parseCategory(input.category),
     side: input.side === undefined ? undefined : parseSide(input.side),

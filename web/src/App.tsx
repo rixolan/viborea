@@ -3,6 +3,7 @@ import { Shell } from "./shell";
 import {
   Academia,
   AcademiaAjustes,
+  AcademiaCatalogo,
   AcademiaNueva,
   AcademiaProfes,
   AcademiaSesion,
@@ -45,6 +46,7 @@ const router = createBrowserRouter([
       { path: "/academia", element: <Academia /> },
       { path: "/academia/nueva", element: <AcademiaNueva /> },
       { path: "/academia/profes", element: <AcademiaProfes /> },
+      { path: "/academia/catalogo", element: <AcademiaCatalogo /> },
       { path: "/academia/ajustes", element: <AcademiaAjustes /> },
       { path: "/academia/sesion/:id", element: <AcademiaSesion /> },
       { path: "/ajustes", element: <Navigate to="/academia/ajustes" replace /> },

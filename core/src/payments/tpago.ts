@@ -95,7 +95,8 @@ export function callbackAck(): { status: "success" } {
   return { status: "success" };
 }
 
-export type FetchLike = typeof fetch;
+/** Just enough of `fetch` to POST JSON. `typeof fetch` also demands preconnect. */
+export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
 export class TpagoClient {
   constructor(
