@@ -52,7 +52,12 @@ import { cookieName, legacyStudentId, readCookie, setPlayerCookieHeader } from "
 import { legacyBookingId, manageUrl, publicOrigin } from "./manage-link";
 import { RateLimiter, clientIp } from "./ratelimit";
 
-function json(data: unknown, status = 200, headers?: HeadersInit) {
+function json(data: unknown, status = 200, extra?: HeadersInit) {
+  // Booking state must never be served from a cache: not the browser's, not a
+  // proxy's, not Cloudflare's. Without this the responses carry no
+  // Cache-Control at all and a back-navigation can show a stale week.
+  const headers = new Headers(extra);
+  if (!headers.has("cache-control")) headers.set("cache-control", "no-store");
   return Response.json(data, { status, headers });
 }
 

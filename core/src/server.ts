@@ -39,7 +39,7 @@ const wa = whatsappConfig();
 if (!wa) console.warn("WhatsApp sin configurar: avisos y recordatorios quedan en dry-run");
 
 function json(data: unknown, status = 200) {
-  return Response.json(data, { status });
+  return Response.json(data, { status, headers: { "cache-control": "no-store" } });
 }
 
 /**
