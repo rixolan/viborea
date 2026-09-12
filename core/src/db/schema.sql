@@ -77,6 +77,8 @@ CREATE TABLE students (
   name TEXT NOT NULL,
   phone TEXT NOT NULL,
   clerk_user_id TEXT,
+  -- Opaque bearer for the guest ficha cookie. No shared secret to rotate.
+  cookie_token TEXT NOT NULL UNIQUE DEFAULT gen_random_uuid()::text,
   category TEXT NOT NULL DEFAULT 'beginner'
     CHECK (category IN ('beginner', '1', '2', '3', '4', '5', '6', '7', '8', 'pro')),
   side TEXT
@@ -104,6 +106,8 @@ CREATE TABLE bookings (
   status TEXT NOT NULL,
   channel TEXT NOT NULL DEFAULT 'admin',
   pack_id TEXT REFERENCES packs(id),
+  -- Opaque bearer for the WhatsApp manage link, scoped to this one booking.
+  manage_token TEXT NOT NULL UNIQUE DEFAULT gen_random_uuid()::text,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   reminded_at TIMESTAMPTZ,
   reminder_attempts INTEGER NOT NULL DEFAULT 0,

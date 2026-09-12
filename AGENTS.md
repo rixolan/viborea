@@ -106,7 +106,7 @@ supabase/            Tandava migrations. Not the product DB.
 - 24h reminder: occupying booking with `reminded_at` null and `starts_at` within 24h → WhatsApp + manage link. Tick in `server.ts`. Only a **delivered free-text** send marks `reminded_at`; the `hello_world` fallback and dry-run do not. Failures count `reminder_attempts` and stop at `MAX_REMINDER_ATTEMPTS` (3) instead of retrying every 60s.
 - Money: integer minor units + `currency`. Never assume Gs. or Stripe.
 - Pack consume: same moment Tandava already used (confirm covered booking), not a third moment.
-- Player identity on the booker: linked `clerk_user_id` wins; otherwise the guest cookie (`vb_p_<slug>`) is the ficha, and a signed-in Clerk user (staff org included) may claim that unclaimed cookie. Staff routes (`/api/week`, …) never read the player cookie. Do not clear the player cookie just because `/me` has a Clerk JWT without a ficha. Clerk native phone is off (Paraguay is unsupported). WhatsApp lives in Clerk `unsafe_metadata.whatsapp` and is collected on first reserve. Guest booker still asks name + WhatsApp.
+- Player identity on the booker: linked `clerk_user_id` wins; otherwise the guest cookie (`vb_p_<slug>`, holding `students.cookie_token`) is the ficha, and a signed-in Clerk user (staff org included) may claim that unclaimed cookie. Staff routes (`/api/week`, …) never read the player cookie. Do not clear the player cookie just because `/me` has a Clerk JWT without a ficha. Clerk native phone is off (Paraguay is unsupported). WhatsApp lives in Clerk `unsafe_metadata.whatsapp` and is collected on first reserve. Guest booker still asks name + WhatsApp.
 
 Code: `core/src/domain/overlap.ts`, `capacity.ts`, `template.ts`, `cutoff.ts`, `pack.ts`, `availability.ts`. Tests: `core/src/domain/*.test.ts`, `core/src/db.test.ts`.
 
@@ -146,7 +146,7 @@ Coach portraits: `web/public/coaches/{coach_id}.webp` → `/coaches/…`. Not Po
 ## Data
 - Schema: `core/src/db/schema.sql`. Additive changes: new id in `core/src/db/migrate.ts`.
 - Boot: `openDb` → migrate → `seedIfEmpty`. **`alignCatalog` only when `SEED_ALIGN_DG=1`**: it rewrites the DG roster from `seed.ts` and drops that academy's templates and availability, so on every boot it silently deleted whatever staff had edited.
-- Migrations 012–016: local-time reinterpretation of `sessions`, the two GiST exclusion constraints, `bookings.created_at` / `reminder_attempts`, `academy.hold_minutes`, one availability block per coach+weekday+start. 013 refuses to apply while two live overlapping sessions both hold reservations; cancel one of each pair it names.
+- Migrations 012–017: local-time reinterpretation of `sessions`, the two GiST exclusion constraints, `bookings.created_at` / `reminder_attempts`, `academy.hold_minutes`, one availability block per coach+weekday+start, and the per-row tokens. All of them run inside one transaction behind `pg_advisory_xact_lock`, so parallel boots (or `bun test` opening several pools) cannot race. 013 refuses to apply while two live overlapping sessions both hold reservations; cancel one of each pair it names.
 - A new academia (Clerk org) gets Individual (cupo 1) and Grupal (cupo 4) offerings automatically; sedes, canchas, profes and franjas are loaded from `/academia/catalogo` and `/academia/profes`, not from code.
 - Production DB name/user: `viborea`. Compose volume: `viborea_pgdata`. Do not publish Postgres to the internet.
 - N academias per Postgres (`academy_id` on tenant tables). Who may open `/academia`: Clerk Organization (ADR 0002 + 0003). Not `{slug}.viborea.com` yet.
@@ -159,7 +159,7 @@ Coach portraits: `web/public/coaches/{coach_id}.webp` → `/coaches/…`. Not Po
 - Public: `https://viborea.com` → `viborea-app-1:8080` on Docker network **`viborea`**. Traefik must be attached to that network (`traefik.docker.network=viborea`).
 - VPS Tailscale: `per-net-us-east` (`100.98.190.87`). Host firewall only forwards **80/443**. Postgres is `127.0.0.1:5432` only. Hex (and similar) SSH is **port 80** via `sslh` → `127.0.0.1:22` (user `hex`, key-only). Do not publish `5432`.
 - Metabase: Dokploy compose `metabase` (`academiadg-metabase-nimooc`), database **Academia** → host `viborea-db-1`, db/user `viborea`. Sync schema after migrate. No analysis views in product schema.
-- `PLAYER_COOKIE_SECRET` signs the player cookie and the manage links. Unset, the app falls back to `CLERK_SECRET_KEY` and warns at boot; it never signs with the repo constant in production. Set a dedicated one (`openssl rand -base64 32`) in the Dokploy env UI so rotating Clerk does not invalidate every manage link already sent, and keep the previous value in `PLAYER_COOKIE_SECRET_OLD` while old links age out.
+- No signing secret to manage: the WhatsApp manage link is `bookings.manage_token` and the guest cookie is `students.cookie_token`, both random per row. Moving Clerk from `pk_test` to `pk_live` no longer invalidates the links already sent. `PLAYER_COOKIE_SECRET` / `CLERK_SECRET_KEY` are read only to verify links issued before migration 017; once those classes have passed, `PLAYER_COOKIE_SECRET` can go away entirely.
 - Backups: the `backup` service runs `ops/pg-backup.sh` (nightly `pg_dump` → volume `viborea_backups`, `BACKUP_KEEP_DAYS` retention). Snapshot before a risky deploy: `docker compose -p viborea run --rm backup /usr/local/bin/pg-backup.sh --once`. Restore: `gunzip -c viborea-<stamp>.sql.gz | psql -U viborea -d viborea`.
 - Image build arg Clerk: `NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY` (publishable only). Runtime `CLERK_SECRET_KEY` from `.env` (`NUXT_CLERK_SECRET_KEY` alias). Live image still uses **Clerk development** (`pk_test`) until a `pk_live` rebuild.
 - WhatsApp sandbox: `WHATSAPP_TEST_TOKEN` + `WHATSAPP_TEST_PHONE_NUMBER_ID` from Doppler project **viborea** config **dev** (prd is empty). `APP_URL=https://viborea.com`. Dokploy “Redeploy” rewrites `.env` from its stored blob and **drops** those keys unless they are in the Dokploy env UI.
@@ -197,6 +197,7 @@ Coach portraits: `web/public/coaches/{coach_id}.webp` → `/coaches/…`. Not Po
 | Coach bio / languages | `coaches.bio`, `coaches.languages` via `core/src/seed.ts` (`alignCatalog`) |
 | Compose / Traefik | `compose.yaml` (network name must match live Docker network) |
 | WhatsApp send / reminders | `core/src/notify/whatsapp.ts`, `server.ts` tick, Doppler `viborea/dev` |
+| Manage link / player cookie | `bookings.manage_token`, `students.cookie_token`, `core/src/manage-link.ts`, `player-cookie.ts` |
 | Local time / weeks | `core/src/domain/timezone.ts`, `web/src/time.ts` |
 | Catálogo, franjas, ajustes | `core/src/db.ts` CRUD + `/api` + `web/src/pages.tsx` (`AcademiaCatalogo`, `AcademiaProfes`, `AcademiaAjustes`) |
 | Rate limits / holds / quota | `core/src/ratelimit.ts`, `expireStaleHolds`, `MAX_UPCOMING_BOOKINGS` |

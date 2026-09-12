@@ -134,7 +134,7 @@ async function tickReminders(): Promise<void> {
     return;
   }
   for (const row of due) {
-    const link = manageUrl(row.slug, row.academy_id, row.id);
+    const link = manageUrl(row.slug, row.manage_token);
     const when = timeIn(row.timezone, new Date(row.starts_at));
     const text = `Viborea: mañana ${row.offering_name} ${when} con ${row.coach_name} en ${row.location_name}. Cancelá o reprogramá (hasta ${row.cutoff_hours} h antes): ${link}`;
     const sent = await notifyReservation(wa, row.phone, text);

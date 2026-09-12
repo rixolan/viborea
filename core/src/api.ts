@@ -29,6 +29,7 @@ import {
   selfServeReschedule,
   sessionBookings,
   setBookingStatus,
+  manageBookingByToken,
   studentHistory,
   updateAcademySettings,
   updateCoach,
@@ -47,8 +48,8 @@ import { OverlapError, type BookingStatus, type DayOfWeek } from "./domain/types
 import { instantFrom, parseTimeOfDay } from "./domain/timezone";
 import { readClerk, requireAcademy } from "./auth";
 import { configFromEnv as whatsappConfig, notifyReservation } from "./notify/whatsapp";
-import { cookieName, decodePlayerCookie, readCookie, setPlayerCookieHeader } from "./player-cookie";
-import { decodeManageToken, manageUrl } from "./manage-link";
+import { cookieName, legacyStudentId, readCookie, setPlayerCookieHeader } from "./player-cookie";
+import { legacyBookingId, manageUrl, publicOrigin } from "./manage-link";
 import { RateLimiter, clientIp } from "./ratelimit";
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
@@ -101,13 +102,27 @@ const MANAGE_LIMIT = new RateLimiter(30, 10 * 60_000);
 
 const bookerRe = /^\/api\/a\/([^/]+)(?:\/(.*))?$/;
 
+/** The cookie is a row token now; the signed three-part form is still read. */
+function playerCookie(academy: Academy, req: Request): { cookieToken: string | null; cookieStudentId: string | null } {
+  const raw = readCookie(req.headers.get("cookie"), cookieName(academy.slug));
+  if (!raw) return { cookieToken: null, cookieStudentId: null };
+  const legacy = legacyStudentId(academy.id, raw);
+  return legacy ? { cookieToken: null, cookieStudentId: legacy } : { cookieToken: raw, cookieStudentId: null };
+}
+
+/** Resolve a manage link: a row token, or an HMAC link sent before them. */
+async function bookingFromLink(db: Db, academy: Academy, token: string) {
+  const byToken = await manageBookingByToken(db, academy.id, token);
+  if (byToken) return byToken;
+  const legacy = legacyBookingId(academy.id, token);
+  return legacy ? manageBooking(db, academy.id, legacy) : null;
+}
+
 async function playerOf(req: Request, db: Db, academy: Academy) {
   const clerk = await readClerk(req);
-  const raw = readCookie(req.headers.get("cookie"), cookieName(academy.slug));
-  const cookieStudentId = decodePlayerCookie(academy.id, raw);
   return identifyPlayer(db, academy.id, {
     clerkUserId: clerk?.userId ?? null,
-    cookieStudentId,
+    ...playerCookie(academy, req),
     claimCookie: Boolean(clerk?.userId),
   });
 }
@@ -221,19 +236,17 @@ async function handleBooker(req: Request, db: Db, url: URL, ac: Academy, rest: s
     }>(req);
     try {
       const clerk = await readClerk(req);
-      const raw = readCookie(req.headers.get("cookie"), cookieName(ac.slug));
-      const cookieStudentId = decodePlayerCookie(ac.id, raw);
       const sessionId = input.sessionId ?? "";
-      const { status, student, bookingId } = await publicBook(db, ac.id, sessionId, input.name ?? "", input.phone ?? "", {
+      const { status, student, manageToken } = await publicBook(db, ac.id, sessionId, input.name ?? "", input.phone ?? "", {
         category: parseCategory(input.category),
         side: parseSide(input.side),
         clerkUserId: clerk?.userId ?? null,
-        cookieStudentId,
+        ...playerCookie(ac, req),
         offeringId: input.offeringId ?? null,
       });
       const session = await getSession(db, ac.id, sessionId);
       const when = session ? `${session.local_date} ${session.local_time}` : "";
-      const link = bookingId ? manageUrl(ac.slug, ac.id, bookingId) : "";
+      const link = manageToken ? manageUrl(ac.slug, manageToken) : "";
       const text = session
         ? `Viborea: ${session.offering_name} ${when} · ${session.location_name} · ${session.coach_name}. Reserva ${status}.${link ? ` Gestioná: ${link}` : ""}`
         : `Viborea: reserva ${status}.${link ? ` Gestioná: ${link}` : ""}`;
@@ -243,7 +256,7 @@ async function handleBooker(req: Request, db: Db, url: URL, ac: Academy, rest: s
       return json(
         { status, message: base + wa, whatsapp: sent.channel, whatsapp_ok: sent.ok, manage_url: link || undefined },
         200,
-        { "Set-Cookie": setPlayerCookieHeader(ac.slug, ac.id, student.id) },
+        { "Set-Cookie": setPlayerCookieHeader(ac.slug, student.cookie_token) },
       );
     } catch (err) {
       // A refused booking should not spend the caller's budget.
@@ -258,10 +271,8 @@ async function handleBooker(req: Request, db: Db, url: URL, ac: Academy, rest: s
     if (!gate.ok) {
       return json({ error: "Demasiados intentos." }, 429, { "Retry-After": String(gate.retryAfterSeconds) });
     }
-    const bookingId = decodeManageToken(ac.id, decodeURIComponent(manageGet[1]));
-    if (!bookingId) return json({ error: "Enlace inválido" }, 404);
-    const booking = await manageBooking(db, ac.id, bookingId);
-    if (!booking) return json({ error: "Reserva inexistente" }, 404);
+    const booking = await bookingFromLink(db, ac, decodeURIComponent(manageGet[1]));
+    if (!booking) return json({ error: "Enlace inválido" }, 404);
     const win = weekOfAcademy(ac, new Date(booking.starts_at));
     const alternatives = booking.can_change
       ? (await weekGrid(db, ac.id, win.mondayKey)).filter(
@@ -273,22 +284,25 @@ async function handleBooker(req: Request, db: Db, url: URL, ac: Academy, rest: s
 
   const manageCancel = rest.match(/^manage\/([^/]+)\/cancel$/);
   if (req.method === "POST" && manageCancel) {
-    const bookingId = decodeManageToken(ac.id, decodeURIComponent(manageCancel[1]));
-    if (!bookingId) return json({ error: "Enlace inválido" }, 404);
-    const booking = await manageBooking(db, ac.id, bookingId);
-    if (!booking) return json({ error: "Reserva inexistente" }, 404);
-    await selfServeCancel(db, ac.id, bookingId, booking.student_id);
+    const booking = await bookingFromLink(db, ac, decodeURIComponent(manageCancel[1]));
+    if (!booking) return json({ error: "Enlace inválido" }, 404);
+    await selfServeCancel(db, ac.id, booking.id, booking.student_id);
     return json({ message: "Reserva cancelada." });
   }
 
   const manageMove = rest.match(/^manage\/([^/]+)\/reschedule$/);
   if (req.method === "POST" && manageMove) {
-    const bookingId = decodeManageToken(ac.id, decodeURIComponent(manageMove[1]));
-    if (!bookingId) return json({ error: "Enlace inválido" }, 404);
-    const booking = await manageBooking(db, ac.id, bookingId);
-    if (!booking) return json({ error: "Reserva inexistente" }, 404);
+    const booking = await bookingFromLink(db, ac, decodeURIComponent(manageMove[1]));
+    if (!booking) return json({ error: "Enlace inválido" }, 404);
     const input = await body<{ sessionId?: string; offeringId?: string }>(req);
-    const moved = await selfServeReschedule(db, ac.id, bookingId, booking.student_id, input.sessionId ?? "", input.offeringId);
+    const moved = await selfServeReschedule(
+      db,
+      ac.id,
+      booking.id,
+      booking.student_id,
+      input.sessionId ?? "",
+      input.offeringId,
+    );
     return json({ message: "Reprogramada.", sessionId: moved.sessionId, status: moved.status });
   }
 
@@ -322,7 +336,7 @@ async function notifyCancellation(academy: Academy, cancelled: CancelledSession)
   const when = `${cancelled.session.local_date} ${cancelled.session.local_time}`;
   let sent = 0;
   for (const person of cancelled.affected) {
-    const text = `Viborea: ${academy.name} canceló la clase de ${when} (${cancelled.session.offering_name}, ${cancelled.session.coach_name}). Si era de un paquete, te devolvimos la clase. Reservá otro horario: ${manageUrl(academy.slug, academy.id, person.booking_id).replace(/\/turno\/.*/, "")}`;
+    const text = `Viborea: ${academy.name} canceló la clase de ${when} (${cancelled.session.offering_name}, ${cancelled.session.coach_name}). Si era de un paquete, te devolvimos la clase. Reservá otro horario: ${publicOrigin()}/reservar/${academy.slug}`;
     const result = await notifyReservation(cfg, person.phone, text);
     if (result.ok && result.channel !== "dry-run") sent += 1;
   }

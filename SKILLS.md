@@ -106,7 +106,7 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 6. Avoid `up` that recreates `db`. Volume `viborea_pgdata` is the data. `bandeja-2ryryu_pgdata` is backup. “volume already exists” is not a failure.
 7. Clerk publishable key: compose build-arg `NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY`.
 8. WhatsApp: copy `WHATSAPP_TEST_*` from Doppler `viborea`/`dev` into the VPS `.env` after any Dokploy Redeploy (it overwrites `.env`). `APP_URL=https://viborea.com`.
-8b. `PLAYER_COOKIE_SECRET` belongs in the Dokploy env UI. Unset, the app signs with `CLERK_SECRET_KEY` and warns; production never signs with the repo constant. Rotate through `PLAYER_COOKIE_SECRET_OLD` so manage links already in WhatsApp keep working.
+8b. There is no signing secret to set: manage links and the guest cookie are random per-row tokens. `PLAYER_COOKIE_SECRET` only verifies links issued before migration 017, so rotating Clerk is safe.
 8c. The `backup` service dumps nightly to volume `viborea_backups`. Take a one-shot snapshot before a migration deploy: `docker compose -p viborea run --rm backup /usr/local/bin/pg-backup.sh --once`.
 9. Metabase (`academiadg-metabase-nimooc`): network `viborea`, host `viborea-db-1`. Do not print DB passwords or git oauth tokens.
 10. Host only exposes 80/443. Postgres stays on `127.0.0.1:5432`. Hex SSH uses port **80** (`sslh`).
@@ -128,7 +128,7 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 2. Happy path payment is stub / manual mark paid in Academia. `core/src/payments/tpago.ts` stays behind the interface. No live keys in git or chat.
 3. Do not connect the academy’s production WhatsApp/Meta number. No OpenWA/WAHA.
 4. Chatwoot AgentBot: `workers/chatwoot-agent-bot/` — sandbox or a dedicated WABA only. It does not write the real grid yet.
-5. Notify + 24h reminder: `core/src/notify/whatsapp.ts` (dry-run unless `WHATSAPP_TEST_*` set). Manage link `core/src/manage-link.ts` → `/reservar/:slug/turno/:token`, signed with `core/src/secret.ts`. Cancel/reschedule only if `selfServeOpen` (cutoff, default 12h). Mark `reminded_at` only on a delivered free-text send: dry-run and the `hello_world` fallback are not reminders.
+5. Notify + 24h reminder: `core/src/notify/whatsapp.ts` (dry-run unless `WHATSAPP_TEST_*` set). Manage link `core/src/manage-link.ts` → `/reservar/:slug/turno/:token`, where the token is `bookings.manage_token` (random per row, no secret). Cancel/reschedule only if `selfServeOpen` (cutoff, default 12h). Mark `reminded_at` only on a delivered free-text send: dry-run and the `hello_world` fallback are not reminders.
 6. Secrets: Doppler project **viborea**, config **dev**. Never commit tokens.
 7. Cutoff and pack rules: `core/src/domain/cutoff.ts`, `pack.ts`. Configurable per academy.
 

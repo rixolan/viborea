@@ -55,6 +55,8 @@ export type Booking = {
 export type HistoryBooking = {
   id: string;
   session_id: string;
+  /** Opaque per-booking token behind /reservar/:slug/turno/:token. */
+  manage_token: string;
   status: string;
   starts_at: string;
   ends_at: string;

@@ -1,15 +1,26 @@
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Db } from "./pg";
 
-export async function migrate(db: Db): Promise<void> {
-  await db`
+export async function migrate(pool: Db): Promise<void> {
+  await pool`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       id TEXT PRIMARY KEY,
       applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  // One migrator at a time, and all of it or none of it. `bun test` opens
+  // several pools against the same database, and two of them applying the
+  // same id raced on the bookkeeping insert.
+  await pool.begin(async (tx) => {
+    await tx`SELECT pg_advisory_xact_lock(hashtext('viborea_migrate'))`;
+    await run(tx as unknown as Db);
+  });
+}
+
+async function run(db: Db): Promise<void> {
   await apply(db, "001_init", async () => {
-    await db.file(join(import.meta.dir, "schema.sql"));
+    await db.unsafe(await readFile(join(import.meta.dir, "schema.sql"), "utf8"));
   });
   await apply(db, "002_cutoff_hours", async () => {
     await db`ALTER TABLE academy ADD COLUMN IF NOT EXISTS cutoff_hours INTEGER NOT NULL DEFAULT 12`;
@@ -150,6 +161,23 @@ export async function migrate(db: Db): Promise<void> {
     `;
     await db`CREATE INDEX IF NOT EXISTS idx_availability_coach ON coach_availability (coach_id, weekday)`;
   });
+  await apply(db, "017_row_tokens", async () => {
+    // Manage links and the player cookie were an HMAC over a shared secret,
+    // so rotating that secret (moving Clerk from test to live keys, say)
+    // invalidated every link already sitting in a player's WhatsApp. A random
+    // token per row needs no secret, cannot be forged from another row, and
+    // is revocable one booking at a time.
+    for (const [table, column] of [
+      ["bookings", "manage_token"],
+      ["students", "cookie_token"],
+    ] as const) {
+      await db.unsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} TEXT`);
+      await db.unsafe(`UPDATE ${table} SET ${column} = gen_random_uuid()::text WHERE ${column} IS NULL`);
+      await db.unsafe(`ALTER TABLE ${table} ALTER COLUMN ${column} SET DEFAULT gen_random_uuid()::text`);
+      await db.unsafe(`ALTER TABLE ${table} ALTER COLUMN ${column} SET NOT NULL`);
+      await db.unsafe(`CREATE UNIQUE INDEX IF NOT EXISTS ${table}_${column} ON ${table} (${column})`);
+    }
+  });
 }
 
 /** GiST exclusion on [starts_at, ends_at) per court / per coach, live rows only. */
@@ -163,9 +191,9 @@ async function addExclusion(db: Db, name: string, column: "court_id" | "coach_id
   );
 }
 
-async function apply(db: Db, id: string, run: () => Promise<void>): Promise<void> {
+async function apply(db: Db, id: string, step: () => Promise<void>): Promise<void> {
   const done = await db`SELECT id FROM schema_migrations WHERE id = ${id}`;
   if (done.length) return;
-  await run();
-  await db`INSERT INTO schema_migrations (id) VALUES (${id})`;
+  await step();
+  await db`INSERT INTO schema_migrations (id) VALUES (${id}) ON CONFLICT (id) DO NOTHING`;
 }

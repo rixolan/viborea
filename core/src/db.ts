@@ -112,6 +112,8 @@ export type Student = {
   name: string;
   phone: string;
   clerk_user_id: string | null;
+  /** Opaque bearer for the guest cookie. Never shown to the player. */
+  cookie_token: string;
   category: StudentCategory;
   side: PlayingSide | null;
 };
@@ -160,6 +162,7 @@ export type BookingView = {
 export type PlayerBooking = {
   id: string;
   session_id: string;
+  manage_token: string;
   status: BookingStatus;
   starts_at: string;
   ends_at: string;
@@ -176,6 +179,7 @@ export const MAX_REMINDER_ATTEMPTS = 3;
 
 export type ReminderDue = {
   id: string;
+  manage_token: string;
   academy_id: string;
   slug: string;
   phone: string;
@@ -211,6 +215,7 @@ function studentFrom(row: {
   name: string;
   phone: string;
   clerk_user_id?: string | null;
+  cookie_token?: string | null;
   category: string;
   side: string | null;
 }): Student {
@@ -220,6 +225,7 @@ function studentFrom(row: {
     name: row.name,
     phone: row.phone,
     clerk_user_id: row.clerk_user_id ?? null,
+    cookie_token: String(row.cookie_token ?? ""),
     category: parseCategory(row.category),
     side: parseSide(row.side),
   };
@@ -758,20 +764,13 @@ export async function findOrCreateStudent(
     }
     return row;
   }
-  const student: Student = {
-    id: crypto.randomUUID(),
-    academy_id: academyId,
-    name: trimmedName,
-    phone: trimmedPhone,
-    clerk_user_id: extra?.clerkUserId ?? null,
-    category: extra?.category ?? "beginner",
-    side: extra?.side ?? null,
-  };
-  await db`
+  const [created] = await db`
     INSERT INTO students (id, academy_id, name, phone, clerk_user_id, category, side)
-    VALUES (${student.id}, ${student.academy_id}, ${student.name}, ${student.phone}, ${student.clerk_user_id}, ${student.category}, ${student.side})
+    VALUES (${crypto.randomUUID()}, ${academyId}, ${trimmedName}, ${trimmedPhone}, ${extra?.clerkUserId ?? null},
+      ${extra?.category ?? "beginner"}, ${extra?.side ?? null})
+    RETURNING *
   `;
-  return student;
+  return studentFrom(created as unknown as Parameters<typeof studentFrom>[0]);
 }
 
 export async function updateStudent(
@@ -791,13 +790,25 @@ export async function updateStudent(
 export async function identifyPlayer(
   db: Db,
   academyId: string,
-  input: { clerkUserId?: string | null; cookieStudentId?: string | null; claimCookie?: boolean },
+  input: {
+    clerkUserId?: string | null;
+    cookieToken?: string | null;
+    /** Legacy signed cookie, which carried the id instead of a token. */
+    cookieStudentId?: string | null;
+    claimCookie?: boolean;
+  },
 ): Promise<Student | null> {
+  const fromCookie = async () =>
+    input.cookieToken
+      ? studentByCookieToken(db, academyId, input.cookieToken)
+      : input.cookieStudentId
+        ? studentById(db, academyId, input.cookieStudentId)
+        : null;
   if (input.clerkUserId) {
     const linked = await studentByClerk(db, academyId, input.clerkUserId);
     if (linked) return linked;
-    if (input.claimCookie && input.cookieStudentId) {
-      const cookie = await studentById(db, academyId, input.cookieStudentId);
+    if (input.claimCookie) {
+      const cookie = await fromCookie();
       if (cookie && !cookie.clerk_user_id) {
         await db`UPDATE students SET clerk_user_id = ${input.clerkUserId}
           WHERE id = ${cookie.id} AND academy_id = ${academyId} AND clerk_user_id IS NULL`;
@@ -806,8 +817,7 @@ export async function identifyPlayer(
     }
     return null;
   }
-  if (!input.cookieStudentId) return null;
-  const cookie = await studentById(db, academyId, input.cookieStudentId);
+  const cookie = await fromCookie();
   if (!cookie || cookie.clerk_user_id) return null;
   return cookie;
 }
@@ -822,6 +832,13 @@ export async function studentByClerk(
 
 export async function studentById(db: Db, academyId: string, id: string): Promise<Student | null> {
   const [row] = await db`SELECT * FROM students WHERE id = ${id} AND academy_id = ${academyId}`;
+  return row ? studentFrom(row as unknown as Parameters<typeof studentFrom>[0]) : null;
+}
+
+/** The cookie is a bearer token, and it only works on its own academia. */
+export async function studentByCookieToken(db: Db, academyId: string, token: string): Promise<Student | null> {
+  if (!token) return null;
+  const [row] = await db`SELECT * FROM students WHERE cookie_token = ${token} AND academy_id = ${academyId}`;
   return row ? studentFrom(row as unknown as Parameters<typeof studentFrom>[0]) : null;
 }
 
@@ -923,14 +940,22 @@ async function resolveBookerStudent(
   academyId: string,
   name: string,
   phone: string,
-  extra?: { category?: StudentCategory; side?: PlayingSide | null; clerkUserId?: string | null; cookieStudentId?: string | null },
+  extra?: {
+    category?: StudentCategory;
+    side?: PlayingSide | null;
+    clerkUserId?: string | null;
+    cookieToken?: string | null;
+    cookieStudentId?: string | null;
+  },
 ): Promise<Student> {
   if (extra?.clerkUserId) {
     const linked = await studentByClerk(db, academyId, extra.clerkUserId);
     if (linked) return applyAccountContact(db, linked, name, phone);
   }
-  if (extra?.cookieStudentId) {
-    const cookie = await studentById(db, academyId, extra.cookieStudentId);
+  if (extra?.cookieToken || extra?.cookieStudentId) {
+    const cookie = extra.cookieToken
+      ? await studentByCookieToken(db, academyId, extra.cookieToken)
+      : await studentById(db, academyId, extra.cookieStudentId as string);
     if (cookie) {
       if (cookie.clerk_user_id && extra?.clerkUserId && cookie.clerk_user_id !== extra.clerkUserId) {
         throw new ClaimedFichaError();
@@ -965,10 +990,11 @@ async function publicBookIn(
     category?: StudentCategory;
     side?: PlayingSide | null;
     clerkUserId?: string | null;
+    cookieToken?: string | null;
     cookieStudentId?: string | null;
     offeringId?: string | null;
   },
-): Promise<{ status: BookingStatus; student: Student; sessionId: string; bookingId: string }> {
+): Promise<{ status: BookingStatus; student: Student; sessionId: string; bookingId: string; manageToken: string }> {
   const academy = await academyById(db, academyId);
   const open = parseOpenSlotId(sessionId);
   let realId = sessionId;
@@ -1015,8 +1041,16 @@ async function publicBookIn(
   const student = await resolveBookerStudent(db, academyId, name, phone, extra);
   await assertBookingQuota(db, academyId, student.id);
   const status = await bookStudentIn(db, academyId, realId, student.id, "web");
-  const [row] = await db`SELECT id FROM bookings WHERE session_id = ${realId} AND student_id = ${student.id}`;
-  return { status, student, sessionId: realId, bookingId: String(row?.id ?? "") };
+  const [row] = await db`
+    SELECT id, manage_token FROM bookings WHERE session_id = ${realId} AND student_id = ${student.id}
+  `;
+  return {
+    status,
+    student,
+    sessionId: realId,
+    bookingId: String(row?.id ?? ""),
+    manageToken: String(row?.manage_token ?? ""),
+  };
 }
 
 /**
@@ -1033,10 +1067,11 @@ export async function publicBook(
     category?: StudentCategory;
     side?: PlayingSide | null;
     clerkUserId?: string | null;
+    cookieToken?: string | null;
     cookieStudentId?: string | null;
     offeringId?: string | null;
   },
-): Promise<{ status: BookingStatus; student: Student; sessionId: string; bookingId: string }> {
+): Promise<{ status: BookingStatus; student: Student; sessionId: string; bookingId: string; manageToken: string }> {
   return db.begin(async (raw) => publicBookIn(raw as unknown as Db, academyId, sessionId, name, phone, extra));
 }
 
@@ -1181,7 +1216,7 @@ export async function selfServeCancel(db: Db, academyId: string, bookingId: stri
 export async function dueReminders(db: Db, now = new Date()): Promise<ReminderDue[]> {
   const until = new Date(now.getTime() + 24 * 3_600_000);
   const rows = await db`
-    SELECT b.id, a.id AS academy_id, a.slug, a.cutoff_hours, a.timezone, st.phone, s.starts_at,
+    SELECT b.id, b.manage_token, a.id AS academy_id, a.slug, a.cutoff_hours, a.timezone, st.phone, s.starts_at,
       o.name AS offering_name, ch.name AS coach_name, l.name AS location_name
     FROM bookings b
     JOIN sessions s ON s.id = b.session_id
@@ -1200,6 +1235,7 @@ export async function dueReminders(db: Db, now = new Date()): Promise<ReminderDu
   `;
   return rows.map((row) => ({
     id: String(row.id),
+    manage_token: String(row.manage_token),
     academy_id: String(row.academy_id),
     slug: String(row.slug),
     phone: String(row.phone),
@@ -1297,24 +1333,36 @@ export async function expireStaleHolds(db: Db, now = new Date()): Promise<Expire
   return out;
 }
 
+const MANAGE_SELECT = `
+  SELECT b.id, b.session_id, b.student_id, b.status, b.manage_token, s.starts_at, s.ends_at, s.offering_id,
+    o.name AS offering_name, ch.name AS coach_name, l.name AS location_name, c.name AS court_name
+  FROM bookings b
+  JOIN sessions s ON s.id = b.session_id
+  JOIN offerings o ON o.id = s.offering_id
+  JOIN coaches ch ON ch.id = s.coach_id
+  JOIN locations l ON l.id = s.location_id
+  JOIN courts c ON c.id = s.court_id
+`;
+
+/** The link a player opens: an opaque token, scoped to its own academia. */
+export async function manageBookingByToken(db: Db, academyId: string, token: string): Promise<ManageBooking | null> {
+  if (!token) return null;
+  const [row] = await db.unsafe(`${MANAGE_SELECT} WHERE b.manage_token = $1 AND s.academy_id = $2`, [token, academyId]);
+  return row ? manageFrom(db, academyId, row as Record<string, unknown>) : null;
+}
+
 export async function manageBooking(db: Db, academyId: string, bookingId: string): Promise<ManageBooking | null> {
-  const [row] = await db`
-    SELECT b.id, b.session_id, b.student_id, b.status, s.starts_at, s.ends_at, s.offering_id,
-      o.name AS offering_name, ch.name AS coach_name, l.name AS location_name, c.name AS court_name
-    FROM bookings b
-    JOIN sessions s ON s.id = b.session_id
-    JOIN offerings o ON o.id = s.offering_id
-    JOIN coaches ch ON ch.id = s.coach_id
-    JOIN locations l ON l.id = s.location_id
-    JOIN courts c ON c.id = s.court_id
-    WHERE b.id = ${bookingId} AND s.academy_id = ${academyId}
-  `;
-  if (!row) return null;
+  const [row] = await db.unsafe(`${MANAGE_SELECT} WHERE b.id = $1 AND s.academy_id = $2`, [bookingId, academyId]);
+  return row ? manageFrom(db, academyId, row as Record<string, unknown>) : null;
+}
+
+async function manageFrom(db: Db, academyId: string, row: Record<string, unknown>): Promise<ManageBooking> {
   const ac = await academyById(db, academyId);
   const starts = new Date(iso(row.starts_at));
   return {
     id: String(row.id),
     session_id: String(row.session_id),
+    manage_token: String(row.manage_token),
     student_id: String(row.student_id),
     status: row.status as BookingStatus,
     starts_at: iso(row.starts_at),
@@ -1355,7 +1403,7 @@ export async function selfServeReschedule(
     // and against the cupo when moving inside the same class.
     await selfServeCancelIn(tx, academyId, bookingId, studentId);
     const booked = await publicBookIn(tx, academyId, newSessionId, student.name, student.phone, {
-      cookieStudentId: student.id,
+      cookieToken: student.cookie_token,
       clerkUserId: student.clerk_user_id,
       offeringId: offeringId ?? null,
     });
@@ -1391,7 +1439,7 @@ async function applyCancel(
 export async function studentHistory(db: Db, academyId: string, studentId: string): Promise<PlayerBooking[]> {
   const academy = await academyById(db, academyId);
   const rows = await db`
-    SELECT b.id, b.session_id, b.status, s.starts_at, s.ends_at,
+    SELECT b.id, b.session_id, b.status, b.manage_token, s.starts_at, s.ends_at,
       o.name AS offering_name, ch.name AS coach_name, l.name AS location_name, c.name AS court_name
     FROM bookings b
     JOIN sessions s ON s.id = b.session_id
@@ -1407,6 +1455,7 @@ export async function studentHistory(db: Db, academyId: string, studentId: strin
     return {
       id: String(row.id),
       session_id: String(row.session_id),
+      manage_token: String(row.manage_token),
       status: row.status as BookingStatus,
       starts_at: iso(row.starts_at),
       ends_at: iso(row.ends_at),

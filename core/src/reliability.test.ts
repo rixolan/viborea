@@ -1,4 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import { handleApi } from "./api";
+import { signPayload } from "./secret";
+import { DG_ACADEMY_ID } from "./seed";
 import {
   WEEKDAYS,
   activePack,
@@ -13,7 +16,10 @@ import {
   createTemplate,
   deleteAvailability,
   expireStaleHolds,
+  findOrCreateStudent,
   listAvailability,
+  manageBookingByToken,
+  studentByCookieToken,
   openDb,
   publicBook,
   selfServeCancel,
@@ -41,10 +47,10 @@ let individual = "";
 let grupal = "";
 let phones = 0;
 
-/** A phone nobody else in the suite will claim. */
+/** A Paraguayan mobile nobody else in the suite will claim: 9 national digits. */
 function phone(): string {
   phones += 1;
-  return `+59597${String(Date.now()).slice(-6)}${String(phones).padStart(1, "0")}`.slice(0, 14);
+  return `+59598${`${Date.now()}${phones}`.slice(-7)}`;
 }
 
 function monday(weeksAhead = 2): string {
@@ -282,6 +288,60 @@ describe.skipIf(!url)("garantías de reserva", () => {
     expect(keys.length).toBe(new Set(keys).size);
     expect(mondayHoles.some((s) => s.location_id === other)).toBe(false);
     await db`DELETE FROM coach_availability WHERE id = ${"av-clash-test"}`;
+  });
+
+  it("el enlace de gestión es un token de la reserva, no un HMAC", async () => {
+    const hole = (await holes(5)).find((h) => h.local_time === "09:00")!;
+    const booked = await publicBook(db, ACADEMY, hole.id, "Con Enlace", phone(), { offeringId: individual });
+    expect(booked.manageToken).toMatch(/^[0-9a-f-]{36}$/);
+
+    const found = await manageBookingByToken(db, ACADEMY, booked.manageToken);
+    expect(found?.id).toBe(booked.bookingId);
+    expect(found?.manage_token).toBe(booked.manageToken);
+    // el token de una academia no abre nada en otra
+    expect(await manageBookingByToken(db, DG_ACADEMY_ID, booked.manageToken)).toBeNull();
+    expect(await manageBookingByToken(db, ACADEMY, "3f2504e0-4f89-41d3-9a0c-0305e82c3301")).toBeNull();
+
+    const open = async (t: string) =>
+      (await handleApi(new Request(`http://localhost/api/a/reltest/manage/${encodeURIComponent(t)}`), db))?.status;
+    expect(await open(booked.manageToken)).toBe(200);
+
+    // Pasar Clerk de test a live cambia CLERK_SECRET_KEY, que es lo que firmaba
+    // los enlaces anteriores: esos mueren, y es justamente por eso que el
+    // enlace nuevo no depende de ningún secreto.
+    const clerkBefore = process.env.CLERK_SECRET_KEY;
+    const cookieBefore = process.env.PLAYER_COOKIE_SECRET;
+    delete process.env.PLAYER_COOKIE_SECRET;
+    try {
+      process.env.CLERK_SECRET_KEY = "sk_test_antes";
+      const legacy = `${booked.bookingId}.${signPayload(`${ACADEMY}:${booked.bookingId}`)}`;
+      expect(await open(legacy)).toBe(200);
+
+      process.env.CLERK_SECRET_KEY = "sk_live_despues";
+      expect(await open(legacy)).toBe(404);
+      expect(await open(booked.manageToken)).toBe(200);
+    } finally {
+      if (clerkBefore === undefined) delete process.env.CLERK_SECRET_KEY;
+      else process.env.CLERK_SECRET_KEY = clerkBefore;
+      if (cookieBefore === undefined) delete process.env.PLAYER_COOKIE_SECRET;
+      else process.env.PLAYER_COOKIE_SECRET = cookieBefore;
+    }
+  });
+
+  it("la cookie de la ficha también es un token de fila", async () => {
+    const student = await findOrCreateStudent(db, ACADEMY, "Ficha Token", phone());
+    expect(student.cookie_token).toMatch(/^[0-9a-f-]{36}$/);
+    expect((await studentByCookieToken(db, ACADEMY, student.cookie_token))?.id).toBe(student.id);
+    expect(await studentByCookieToken(db, ACADEMY, "no-existe")).toBeNull();
+    expect(await studentByCookieToken(db, DG_ACADEMY_ID, student.cookie_token)).toBeNull();
+
+    // reservar con esa cookie reconoce la misma ficha, sin nombre ni teléfono
+    const hole = (await holes(5)).find((h) => h.local_time === "10:00")!;
+    const booked = await publicBook(db, ACADEMY, hole.id, "", "", {
+      offeringId: individual,
+      cookieToken: student.cookie_token,
+    });
+    expect(booked.student.id).toBe(student.id);
   });
 
   it("la planilla madre no acepta una fila que se solapa", async () => {
