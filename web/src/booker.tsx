@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
 import { api, type Coach, type HistoryBooking, type Location, type Session, type Student } from "./api";
@@ -34,6 +34,14 @@ export function languageLabels(codes: string[] | undefined) {
   return (codes ?? []).map((code) => LANGUAGE_LABELS[code] ?? code);
 }
 
+/** Bring the next step into view on a phone. No-op from `sm` up. */
+function revealOnPhone(el: HTMLElement | null) {
+  if (!el || typeof window === "undefined") return;
+  if (window.matchMedia("(min-width: 640px)").matches) return;
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+}
+
 function openSession(s: Session, now = new Date()) {
   return !s.cancelled && s.booked < s.capacity && new Date(s.starts_at) > now;
 }
@@ -52,6 +60,8 @@ function BookerGrid({ slug }: { slug: string }) {
   const [coaches, setCoaches] = useState<Coach[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [academyName, setAcademyName] = useState("");
+  const profeRef = useRef<HTMLElement | null>(null);
+  const horariosRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     api
@@ -92,6 +102,18 @@ function BookerGrid({ slug }: { slug: string }) {
     }
   }, [coachesHere, coachId]);
 
+  // On a phone each step opens below the fold, so a tap looked like nothing
+  // happened. Desktop shows the whole flow at once and is left alone.
+  useEffect(() => {
+    if (!locationId) return;
+    revealOnPhone(profeRef.current);
+  }, [locationId]);
+
+  useEffect(() => {
+    if (coachId === null) return;
+    revealOnPhone(horariosRef.current);
+  }, [coachId]);
+
   const slots = useMemo(() => {
     if (coachId === null) return [];
     const list = coachId === "" ? atSede : atSede.filter((s) => s.coach_id === coachId);
@@ -102,6 +124,12 @@ function BookerGrid({ slug }: { slug: string }) {
     setLocationId(id);
     setCoachId(null);
   }
+
+  // Each step scrolls the previous one off a phone screen, so every step says
+  // what was already chosen.
+  const sedeName = locations.find((l) => l.id === locationId)?.name ?? "";
+  const coachName =
+    coachId === null ? "" : coachId === "" ? "Cualquier profe" : (coachesHere.find((c) => c.id === coachId)?.name ?? "");
 
   function shiftWeek(delta: number) {
     setMonday(addDaysToKey(monday, delta * 7));
@@ -120,7 +148,7 @@ function BookerGrid({ slug }: { slug: string }) {
       <section>
         <h1 className="text-2xl font-semibold tracking-tight">{academyName || "Reservar"}</h1>
         <p className="mt-1 text-sm text-stone-600">Sede, después profe, después un horario.</p>
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="mt-5 grid gap-2 sm:mt-5 sm:grid-cols-3 sm:gap-3">
           {locations.map((l) => {
             const on = locationId === l.id;
             return (
@@ -131,15 +159,29 @@ function BookerGrid({ slug }: { slug: string }) {
                   on ? "border-stone-900 ring-1 ring-stone-900" : "border-stone-200 hover:border-stone-400",
                 )}
               >
-                <button type="button" onClick={() => pickSede(l.id)} className="block w-full text-left">
+                <button
+                  type="button"
+                  onClick={() => pickSede(l.id)}
+                  className="flex w-full items-center gap-3 p-2 text-left sm:block sm:p-0"
+                >
                   {l.image_url ? (
-                    <img src={l.image_url} alt="" className="h-28 w-full object-cover" />
+                    <img
+                      src={l.image_url}
+                      alt=""
+                      className="h-14 w-20 shrink-0 rounded object-cover sm:h-28 sm:w-full sm:rounded-none"
+                    />
                   ) : (
-                    <div className="h-28 w-full bg-stone-100" />
+                    <span className="block h-14 w-20 shrink-0 rounded bg-stone-100 sm:h-28 sm:w-full sm:rounded-none" />
                   )}
-                  <span className="block px-3 pt-2.5 pb-1">
-                    <span className="block text-sm font-medium text-stone-900">{l.name}</span>
-                    {l.address ? <span className="mt-0.5 block text-[11px] leading-snug text-stone-500">{l.address}</span> : null}
+                  <span className="min-w-0 flex-1 sm:block sm:px-3 sm:pt-2.5 sm:pb-1">
+                    <span className="block truncate text-sm font-medium text-stone-900 sm:whitespace-normal">
+                      {l.name}
+                    </span>
+                    {l.address ? (
+                      <span className="mt-0.5 block truncate text-[11px] leading-snug text-stone-500 sm:whitespace-normal">
+                        {l.address}
+                      </span>
+                    ) : null}
                   </span>
                 </button>
                 {l.maps_url ? (
@@ -147,12 +189,12 @@ function BookerGrid({ slug }: { slug: string }) {
                     href={l.maps_url}
                     target="_blank"
                     rel="noreferrer"
-                    className="block px-3 pb-2.5 text-[11px] text-stone-400 hover:text-stone-700"
+                    className="block px-3 pb-2 text-[11px] text-stone-400 hover:text-stone-700 sm:pb-2.5"
                   >
                     Ver en Maps
                   </a>
                 ) : (
-                  <div className="h-2" />
+                  <span className="block h-1 sm:h-2" />
                 )}
               </div>
             );
@@ -161,8 +203,9 @@ function BookerGrid({ slug }: { slug: string }) {
       </section>
 
       {locationId ? (
-        <section>
+        <section ref={profeRef} className="scroll-mt-4">
           <h2 className="text-lg font-semibold tracking-tight">Profe</h2>
+          {sedeName ? <p className="mt-1 text-sm text-stone-500">En {sedeName}</p> : null}
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <button type="button" onClick={() => setCoachId("")} className={cn(chip(coachId === ""), "flex h-full items-start gap-3")}>
               <span className="grid h-24 w-20 shrink-0 place-items-center rounded-md bg-stone-100 text-lg text-stone-500">*</span>
@@ -196,7 +239,12 @@ function BookerGrid({ slug }: { slug: string }) {
                       </span>
                     ) : null}
                     {c.bio ? (
-                      <span className={cn("mt-1.5 block text-[11px] leading-snug line-clamp-4", on ? "text-stone-300" : "text-stone-500")}>
+                      <span
+                        className={cn(
+                          "mt-1.5 block text-[11px] leading-snug line-clamp-2 sm:line-clamp-4",
+                          on ? "text-stone-300" : "text-stone-500",
+                        )}
+                      >
                         {c.bio}
                       </span>
                     ) : null}
@@ -212,8 +260,12 @@ function BookerGrid({ slug }: { slug: string }) {
       ) : null}
 
       {coachId !== null ? (
-        <section>
-          <div className="mb-4 flex flex-wrap items-center gap-3">
+        <section ref={horariosRef} className="scroll-mt-4">
+          <p className="text-sm text-stone-500">
+            {sedeName}
+            {coachName ? ` · ${coachName}` : ""}
+          </p>
+          <div className="mt-1 mb-4 flex flex-wrap items-center gap-3">
             <h2 className="text-lg font-semibold tracking-tight">{weekLabel(monday)}</h2>
             <button type="button" className="grid h-8 w-8 place-items-center rounded-md border border-stone-200 bg-white" onClick={() => shiftWeek(-1)}>
               ‹
@@ -225,7 +277,7 @@ function BookerGrid({ slug }: { slug: string }) {
           {slots.length === 0 ? (
             <p className="mb-4 text-sm text-stone-500">
               Esta semana no quedan horarios
-              {coachId && coachId !== "" ? ` con ${coachesHere.find((c) => c.id === coachId)?.name ?? "este profe"}` : " en esta sede"}.
+              {coachId && coachId !== "" ? ` con ${coachName || "este profe"}` : " en esta sede"}.
               Probá la semana siguiente.
             </p>
           ) : null}
@@ -234,7 +286,9 @@ function BookerGrid({ slug }: { slug: string }) {
               const dayKey = addDaysToKey(monday, offset);
               const daySlots = slots.filter((s) => s.local_date === dayKey);
               return (
-                <div key={offset}>
+                // A phone shows two day columns, so an empty day is just noise
+                // between the player and the next free hour.
+                <div key={offset} className={cn(daySlots.length === 0 && "hidden sm:block")}>
                   <p className="mb-3 text-center text-[11px] font-medium tracking-wide text-stone-500">
                     {dayHeading(monday, offset)}
                   </p>
