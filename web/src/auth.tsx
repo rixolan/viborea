@@ -4,6 +4,21 @@ import { useAuth, useOrganization, useOrganizationList, useUser } from "@clerk/c
 
 const hasClerk = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
 
+/**
+ * The staff token, whether or not Clerk is configured.
+ *
+ * `hasClerk` is a module constant, so the hook order never changes between
+ * renders; this is the `ClerkGate` split the repo asks for, applied to the
+ * token instead of to every screen. Without Clerk the API answers from its
+ * dev fallback, which is what makes the Academia UI workable locally.
+ */
+export function useStaffToken(): (opts?: { skipCache?: boolean }) => Promise<string | null> {
+  if (!hasClerk) return async () => null;
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- hasClerk cannot change at runtime
+  const { getToken } = useAuth();
+  return getToken;
+}
+
 export function RequireAuth({ children }: { children: ReactNode }) {
   if (!hasClerk) return children;
   return <SignedInGate>{children}</SignedInGate>;

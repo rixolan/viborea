@@ -180,6 +180,16 @@ export const api = {
       body: JSON.stringify(input),
       headers: auth(token),
     }),
+  saveCoachAvailability: (
+    coachId: string,
+    blocks: Array<{ locationId: string; weekday: string; startTime: string; endTime: string }>,
+    token?: string,
+  ) =>
+    req<{ availability: Availability[]; message: string }>(`/api/availability/coach/${encodeURIComponent(coachId)}`, {
+      method: "PUT",
+      body: JSON.stringify({ blocks }),
+      headers: auth(token),
+    }),
   deleteAvailability: (id: string, token?: string) =>
     req<{ availability: Availability[] }>(`/api/availability/${encodeURIComponent(id)}`, {
       method: "DELETE",

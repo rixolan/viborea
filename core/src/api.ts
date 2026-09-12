@@ -22,6 +22,7 @@ import {
   getSession,
   identifyPlayer,
   listAvailability,
+  replaceCoachAvailability,
   listTemplates,
   manageBooking,
   publicBook,
@@ -398,6 +399,20 @@ async function handleStaff(req: Request, db: Db, url: URL, academy: Academy): Pr
       });
       return json({ id, availability: await listAvailability(db, academy.id) });
     }
+  }
+
+  // The grid editor saves a coach's whole week in one request.
+  const coachWeek = url.pathname.match(/^\/api\/availability\/coach\/([^/]+)$/);
+  if (req.method === "PUT" && coachWeek) {
+    const input = await body<{ blocks?: { locationId?: string; weekday?: string; startTime?: string; endTime?: string }[] }>(req);
+    const blocks = (input.blocks ?? []).map((b) => ({
+      locationId: b.locationId ?? "",
+      weekday: b.weekday ?? "",
+      startTime: b.startTime ?? "",
+      endTime: b.endTime ?? "",
+    }));
+    const availability = await replaceCoachAvailability(db, academy.id, decodeURIComponent(coachWeek[1]), blocks);
+    return json({ availability, message: `Disponibilidad guardada (${blocks.length} franja(s)).` });
   }
 
   const availabilityId = url.pathname.match(/^\/api\/availability\/([^/]+)$/);

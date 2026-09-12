@@ -1675,6 +1675,72 @@ export async function deleteAvailability(db: Db, academyId: string, id: string):
   await db`DELETE FROM coach_availability WHERE id = ${id} AND academy_id = ${academyId}`;
 }
 
+export type AvailabilityInput = {
+  locationId: string;
+  weekday: string;
+  startTime: string;
+  endTime: string;
+};
+
+/**
+ * Replace one coach's whole week at once.
+ *
+ * The grid editor sends the week it wants rather than a stream of per-cell
+ * writes: a half-applied roster is worse than a rejected save, and the coach
+ * cannot be in two sedes at the same hour so the set has to be validated as a
+ * whole anyway.
+ */
+export async function replaceCoachAvailability(
+  db: Db,
+  academyId: string,
+  coachId: string,
+  blocks: readonly AvailabilityInput[],
+): Promise<AvailabilityView[]> {
+  const [coach] = await db`SELECT id FROM coaches WHERE id = ${coachId} AND academy_id = ${academyId}`;
+  if (!coach) throw new Error("Entrenador inexistente");
+  const locations = (await db`SELECT id FROM locations WHERE academy_id = ${academyId}`) as unknown as { id: string }[];
+  const known = new Set(locations.map((l) => l.id));
+
+  const clean: AvailabilityBlock[] = blocks.map((raw) => {
+    if (!known.has(raw.locationId)) throw new Error("Sede inexistente");
+    const startTime = parseTimeOfDay(raw.startTime);
+    const endTime = parseTimeOfDay(raw.endTime, { allowEndOfDay: true });
+    if (minutesOfTime(endTime) - minutesOfTime(startTime) < 60) {
+      throw new Error(`La franja ${startTime}–${endTime} no llega a una hora`);
+    }
+    return {
+      coachId,
+      locationId: raw.locationId,
+      weekday: parseWeekday(raw.weekday),
+      startTime,
+      endTime,
+    };
+  });
+
+  for (let i = 0; i < clean.length; i++) {
+    for (let j = i + 1; j < clean.length; j++) {
+      if (blocksOverlap(clean[i], clean[j])) {
+        throw new Error(
+          `El profe no puede estar en dos lados a la vez: ${clean[i].weekday} ${clean[i].startTime}–${clean[i].endTime} choca con ${clean[j].startTime}–${clean[j].endTime}`,
+        );
+      }
+    }
+  }
+
+  await db.begin(async (raw) => {
+    const tx = raw as unknown as Db;
+    await tx`DELETE FROM coach_availability WHERE academy_id = ${academyId} AND coach_id = ${coachId}`;
+    for (const block of clean) {
+      await tx`
+        INSERT INTO coach_availability (id, academy_id, coach_id, location_id, weekday, start_time, end_time)
+        VALUES (${shortId("av")}, ${academyId}, ${coachId}, ${block.locationId}, ${block.weekday},
+          ${block.startTime}, ${block.endTime})
+      `;
+    }
+  });
+  return listAvailability(db, academyId);
+}
+
 async function assertNoLiveSessions(db: Db, where: "court_id" | "coach_id" | "offering_id" | "location_id", id: string, label: string): Promise<void> {
   const [row] = await db.unsafe(
     `SELECT COUNT(*)::int AS n FROM sessions WHERE ${where} = $1 AND cancelled = false AND starts_at > now()`,

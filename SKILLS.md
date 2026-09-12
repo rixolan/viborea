@@ -148,7 +148,9 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 2. Clerk wraps the app only if `VITE_CLERK_PUBLISHABLE_KEY` is set. Do not call `useAuth` without `ClerkProvider` — split gated components (`ClerkGate`).
 3. Booker lists real `/api/a/:slug/week` sessions (court + coach + cupos). No `placeholders.ts` occupancy in the SPA.
 4. Academia: week + optional coach filter + roster + pagado/pendiente + cancelar clase + nueva clase. Sedes, canchas, profes y tipos de clase en `/academia/catalogo`; franjas de presencia en `/academia/profes`. Staff APIs send Clerk JWT.
-4b. Dates and hours come from `local_date` / `local_time`, or `web/src/time.ts` with the payload `time_zone`. Never `new Date(iso).getUTCHours()`: a player in Madrid must read the Asunción hour.
+4b. Coach availability is edited in `web/src/availability-editor.tsx`, on Cal.com's pattern: one row per weekday, a switch to turn the day off, several `desde–hasta` ranges per day with `+` / `×`, and a copy button that replicates a day onto the days you tick. Viborea adds the dimension Cal.com has no need for: every range names its **sede**. Times are half-hour `<select>`s, not `<input type="time">`, which renders 12-hour in an en-US browser. The whole week saves with one `PUT`; do not go back to a per-row form.
+4c. Staff screens take the token from `useStaffToken()`, never `useAuth()` directly, so the Academia UI still works locally without a Clerk key.
+4d. Dates and hours come from `local_date` / `local_time`, or `web/src/time.ts` with the payload `time_zone`. Never `new Date(iso).getUTCHours()`: a player in Madrid must read the Asunción hour.
 5. Área del jugador: `/reservar/:slug/clases`. Entrar jugador `/entrar/jugador/:slug` (no activa org). Entrar academia `/entrar/academia`. No revivir `/jugador` as a third shell. Confirmación: signed-in uses Clerk name + `unsafe_metadata.whatsapp` (Clerk no admite PY). Guest still fills name + WhatsApp.
 6. Build: `cd web && bun run build`. Image copies `web/dist` to `/web/dist`.
 

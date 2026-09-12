@@ -48,7 +48,7 @@ export function wallOf(iso: string, timeZone: string): Wall {
   };
 }
 
-function pad2(n: number): string {
+export function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
@@ -112,4 +112,21 @@ export function weekLabel(mondayKey: string): string {
   const a = keyToDate(mondayKey);
   const b = keyToDate(addDaysToKey(mondayKey, 6));
   return `${a.getUTCDate()}–${b.getUTCDate()} ${MONTH_SHORT[b.getUTCMonth()]} ${b.getUTCFullYear()}`;
+}
+
+/** `06:00`, `07:00`, … for the hours a presence block covers. */
+export function hoursBetween(startTime: string, endTime: string): string[] {
+  const minutes = (t: string) => {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const out: string[] = [];
+  for (let m = minutes(startTime); m + 60 <= minutes(endTime); m += 60) {
+    out.push(`${pad2(Math.floor(m / 60))}:00`);
+  }
+  return out;
+}
+
+export function nextHour(hour: string): string {
+  return `${pad2(Number(hour.slice(0, 2)) + 1)}:00`;
 }

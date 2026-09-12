@@ -15,29 +15,18 @@ import {
   type Student,
   type Template,
 } from "./api";
-import { RequireAcademia, RequireAuth } from "./auth";
+import { RequireAcademia, RequireAuth, useStaffToken } from "./auth";
 import { Badge, Button, Card, Input } from "./ui";
 import { Booker, coachPhoto, languageLabels } from "./booker";
 import { WeekGrid } from "./week-grid";
 import { dayAt, dayLongLabel, thisMondayKey } from "./time";
+import { AvailabilityEditor } from "./availability-editor";
 import { PhoneField } from "./phone-field";
 import { parsePhone, phoneIssue } from "./phone";
 
 const clerkFields = { layout: { showOptionalFields: true } };
 
-const hasClerk = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
 
-/**
- * Staff screens read the Clerk JWT, so they may not call `useAuth` unless a
- * `ClerkProvider` is mounted. Without the key that used to throw a blank error
- * page; now it says what is missing.
- */
-function staffPage(Inner: () => ReactNode): () => ReactNode {
-  return function StaffPage() {
-    if (!hasClerk) return clerkMissing();
-    return <Inner />;
-  };
-}
 
 export function Landing() {
   return (
@@ -700,7 +689,7 @@ function AcademiaNav() {
 }
 
 function AcademiaInner() {
-  const { getToken } = useAuth();
+  const getToken = useStaffToken();
   const [monday, setMonday] = useState(thisMondayKey());
   const [sessions, setSessions] = useState<Session[]>([]);
   const [coachId, setCoachId] = useState("");
@@ -813,7 +802,7 @@ function AcademiaInner() {
 
 function AcademiaSesionInner() {
   const { id } = useParams();
-  const { getToken } = useAuth();
+  const getToken = useStaffToken();
   const [data, setData] = useState<SessionDetail | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   async function load() {
@@ -947,7 +936,7 @@ function Select({
 
 /** One-off class outside the planilla madre. */
 function NuevaClase({ monday, onDone }: { monday: string; onDone: (message: string) => Promise<void> }) {
-  const { getToken } = useAuth();
+  const getToken = useStaffToken();
   const [cat, setCat] = useState<StaffCatalog | null>(null);
   const [locationId, setLocationId] = useState("");
   const [courtId, setCourtId] = useState("");
@@ -1050,7 +1039,7 @@ function NuevaClase({ monday, onDone }: { monday: string; onDone: (message: stri
 }
 
 function AcademiaAjustesInner() {
-  const { getToken } = useAuth();
+  const getToken = useStaffToken();
   const [settings, setSettings] = useState<AcademySettings | null>(null);
   const [name, setName] = useState("");
   const [timezone, setTimezone] = useState("");
@@ -1171,7 +1160,7 @@ function AcademiaAjustesInner() {
 }
 
 function AcademiaProfesInner() {
-  const { getToken } = useAuth();
+  const getToken = useStaffToken();
   const [coachId, setCoachId] = useState("");
   const [cat, setCat] = useState<StaffCatalog | null>(null);
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -1182,10 +1171,6 @@ function AcademiaProfesInner() {
   const [offeringId, setOfferingId] = useState("");
   const [weekday, setWeekday] = useState("monday");
   const [startTime, setStartTime] = useState("15:00");
-  const [avLocationId, setAvLocationId] = useState("");
-  const [avWeekday, setAvWeekday] = useState("monday");
-  const [avStart, setAvStart] = useState("06:00");
-  const [avEnd, setAvEnd] = useState("11:00");
 
   async function load() {
     const token = (await getToken()) ?? undefined;
@@ -1195,7 +1180,6 @@ function AcademiaProfesInner() {
     setAvailability(av.availability);
     setCoachId((prev) => prev || c.coaches[0]?.id || "");
     setLocationId((prev) => prev || c.locations[0]?.id || "");
-    setAvLocationId((prev) => prev || c.locations[0]?.id || "");
     setOfferingId((prev) => prev || c.offerings[0]?.id || "");
   }
 
@@ -1205,34 +1189,8 @@ function AcademiaProfesInner() {
 
   const courtsHere = (cat?.courts ?? []).filter((c) => c.location_id === locationId);
   const mine = templates.filter((t) => t.coach_id === coachId);
-  const myBlocks = availability.filter((a) => a.coach_id === coachId);
+
   const selectedCoach = cat?.coaches.find((c) => c.id === coachId);
-
-  async function addBlock(e: FormEvent) {
-    e.preventDefault();
-    setMsg(null);
-    try {
-      const token = (await getToken()) ?? undefined;
-      const r = await api.addAvailability(
-        { coachId, locationId: avLocationId, weekday: avWeekday, startTime: avStart, endTime: avEnd },
-        token,
-      );
-      setAvailability(r.availability);
-      setMsg("Franja agregada. Ya aparece como huecos en el booker.");
-    } catch (err) {
-      setMsg(err instanceof Error ? err.message : "Error");
-    }
-  }
-
-  async function removeBlock(id: string) {
-    try {
-      const token = (await getToken()) ?? undefined;
-      const r = await api.deleteAvailability(id, token);
-      setAvailability(r.availability);
-    } catch (err) {
-      setMsg(err instanceof Error ? err.message : "Error");
-    }
-  }
 
   async function addSlot(e: FormEvent) {
     e.preventDefault();
@@ -1304,56 +1262,25 @@ function AcademiaProfesInner() {
         {msg ? <p className="text-sm text-stone-700">{msg}</p> : null}
 
         <Card>
-          <p className="font-medium">Franjas de presencia</p>
-          <p className="mb-3 text-xs text-stone-500">
-            La madre del booker: cada franja se abre como huecos de una hora que el jugador convierte en clase al
-            reservar.
+          <p className="font-medium">Disponibilidad de la semana</p>
+          <p className="mb-4 text-xs text-stone-500">
+            La madre del booker. Lo que marcás acá es lo que el jugador puede reservar.
           </p>
-          <ul className="divide-y text-sm">
-            {myBlocks.map((a) => (
-              <li key={a.id} className="flex items-center justify-between py-2">
-                <span>
-                  {weekdayLabel(a.weekday)} {a.start_time}–{a.end_time}
-                  <span className="text-stone-400"> · {a.location_name}</span>
-                </span>
-                <button type="button" className="text-xs underline" onClick={() => void removeBlock(a.id)}>
-                  Quitar
-                </button>
-              </li>
-            ))}
-            {myBlocks.length === 0 ? <li className="py-2 text-stone-500">Sin franjas.</li> : null}
-          </ul>
-          {coachId && cat?.locations.length ? (
-            <form className="mt-4 grid gap-3 border-t border-stone-100 pt-4 sm:grid-cols-5" onSubmit={addBlock}>
-              <Field label="Día">
-                <Select value={avWeekday} onChange={setAvWeekday}>
-                  {WEEKDAYS.map(([id, label]) => (
-                    <option key={id} value={id}>
-                      {label}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="Desde">
-                <Input type="time" step={3600} value={avStart} onChange={(e) => setAvStart(e.target.value)} required />
-              </Field>
-              <Field label="Hasta">
-                <Input type="time" step={3600} value={avEnd} onChange={(e) => setAvEnd(e.target.value)} required />
-              </Field>
-              <Field label="Sede">
-                <Select value={avLocationId} onChange={setAvLocationId}>
-                  {(cat?.locations ?? []).map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <div className="flex items-end">
-                <Button type="submit">Agregar</Button>
-              </div>
-            </form>
-          ) : null}
+          {coachId ? (
+            <AvailabilityEditor
+              coachId={coachId}
+              coachName={selectedCoach?.name ?? "el profe"}
+              locations={cat?.locations ?? []}
+              availability={availability}
+              getToken={async () => (await getToken()) ?? undefined}
+              onSaved={(list, message) => {
+                setAvailability(list);
+                setMsg(message);
+              }}
+            />
+          ) : (
+            <p className="text-sm text-stone-500">Elegí un profe.</p>
+          )}
         </Card>
 
         <Card>
@@ -1435,7 +1362,7 @@ function AcademiaProfesInner() {
  * academia meant editing `seed.ts` and deploying.
  */
 function AcademiaCatalogoInner() {
-  const { getToken } = useAuth();
+  const getToken = useStaffToken();
   const [cat, setCat] = useState<StaffCatalog | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -1711,8 +1638,8 @@ function AcademiaCatalogoInner() {
   );
 }
 
-export const Academia = staffPage(AcademiaInner);
-export const AcademiaSesion = staffPage(AcademiaSesionInner);
-export const AcademiaProfes = staffPage(AcademiaProfesInner);
-export const AcademiaCatalogo = staffPage(AcademiaCatalogoInner);
-export const AcademiaAjustes = staffPage(AcademiaAjustesInner);
+export const Academia = AcademiaInner;
+export const AcademiaSesion = AcademiaSesionInner;
+export const AcademiaProfes = AcademiaProfesInner;
+export const AcademiaCatalogo = AcademiaCatalogoInner;
+export const AcademiaAjustes = AcademiaAjustesInner;

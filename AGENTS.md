@@ -132,6 +132,7 @@ JSON (SPA):
 | POST | `/api/sessions/:id/cancel` | staff cancel: cascades bookings, restores packs, avisa |
 | GET PATCH | `/api/settings` | name, timezone, currency, `cutoff_hours`, `hold_minutes` |
 | GET POST | `/api/availability` | franjas de presencia (the DG mother), `DELETE /:id` |
+| PUT | `/api/availability/coach/:id` | one coach's whole week, replaced atomically (the grid panel) |
 | POST | `/api/locations` `/api/courts` `/api/coaches` `/api/offerings` | catálogo; `PATCH`/`DELETE /:id` |
 | PATCH | `/api/students/:id` | categoría y lado |
 
@@ -200,6 +201,7 @@ Coach portraits: `web/public/coaches/{coach_id}.webp` → `/coaches/…`. Not Po
 | Manage link / player cookie | `bookings.manage_token`, `students.cookie_token`, `core/src/manage-link.ts`, `player-cookie.ts` |
 | Local time / weeks | `core/src/domain/timezone.ts`, `web/src/time.ts` |
 | Catálogo, franjas, ajustes | `core/src/db.ts` CRUD + `/api` + `web/src/pages.tsx` (`AcademiaCatalogo`, `AcademiaProfes`, `AcademiaAjustes`) |
+| Panel de disponibilidad | `web/src/availability-editor.tsx` (Cal.com-style day rows, plus a sede per range) + `replaceCoachAvailability` |
 | Rate limits / holds / quota | `core/src/ratelimit.ts`, `expireStaleHolds`, `MAX_UPCOMING_BOOKINGS` |
 | WhatsApp menu (sandbox) | `workers/chatwoot-agent-bot/` |
 

@@ -19,6 +19,7 @@ import {
   findOrCreateStudent,
   listAvailability,
   manageBookingByToken,
+  replaceCoachAvailability,
   studentByCookieToken,
   openDb,
   publicBook,
@@ -342,6 +343,52 @@ describe.skipIf(!url)("garantías de reserva", () => {
       cookieToken: student.cookie_token,
     });
     expect(booked.student.id).toBe(student.id);
+  });
+
+  it("la academia guarda la semana entera de un profe de una vez", async () => {
+    const week = await replaceCoachAvailability(db, ACADEMY, coachB, [
+      { locationId: loc, weekday: "monday", startTime: "07:00", endTime: "11:00" },
+      { locationId: loc, weekday: "monday", startTime: "14:00", endTime: "17:00" },
+      { locationId: loc, weekday: "friday", startTime: "08:00", endTime: "12:00" },
+    ]);
+    const mine = week.filter((a) => a.coach_id === coachB);
+    expect(mine.map((a) => `${a.weekday} ${a.start_time}-${a.end_time}`).sort()).toEqual([
+      "friday 08:00-12:00",
+      "monday 07:00-11:00",
+      "monday 14:00-17:00",
+    ]);
+    // los huecos del booker siguen a la franja nueva
+    const hours = (await weekGrid(db, ACADEMY, monday(6)))
+      .filter((s) => s.source === "availability" && s.coach_id === coachB && s.local_date === monday(6))
+      .map((s) => s.local_time);
+    expect(hours).toEqual(["07:00", "08:00", "09:00", "10:00", "14:00", "15:00", "16:00"]);
+
+    // reemplazar es reemplazar: lo que no viene, se va
+    const shorter = await replaceCoachAvailability(db, ACADEMY, coachB, [
+      { locationId: loc, weekday: "monday", startTime: "07:00", endTime: "08:00" },
+    ]);
+    expect(shorter.filter((a) => a.coach_id === coachB)).toHaveLength(1);
+    // y no toca a los demás profes
+    expect(shorter.some((a) => a.coach_id === coachA)).toBe(true);
+
+    // una semana inválida no escribe nada
+    await expect(
+      replaceCoachAvailability(db, ACADEMY, coachB, [
+        { locationId: loc, weekday: "monday", startTime: "09:00", endTime: "12:00" },
+        { locationId: loc, weekday: "monday", startTime: "11:00", endTime: "13:00" },
+      ]),
+    ).rejects.toThrow(/dos lados a la vez/i);
+    await expect(
+      replaceCoachAvailability(db, ACADEMY, coachB, [
+        { locationId: loc, weekday: "monday", startTime: "09:00", endTime: "09:30" },
+      ]),
+    ).rejects.toThrow(/una hora/i);
+    expect((await listAvailability(db, ACADEMY)).filter((a) => a.coach_id === coachB)).toHaveLength(1);
+
+    // vaciar la semana deja al profe sin huecos
+    expect(await replaceCoachAvailability(db, ACADEMY, coachB, [])).toEqual(
+      expect.not.arrayContaining([expect.objectContaining({ coach_id: coachB })]),
+    );
   });
 
   it("la planilla madre no acepta una fila que se solapa", async () => {
