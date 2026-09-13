@@ -9,7 +9,7 @@
  *     --example "Alejandro|lunes 15/09|18:00" --footer "Academia DG"
  *   infisical run --env=dev -- bun core/scripts/whatsapp-message-templates.ts delete NAME
  *
- * Creates do not send a message. See docs/fork/WHATSAPP.md.
+ * Creates do not send a message. See docs/whatsapp.md.
  */
 import {
   createMessageTemplate,

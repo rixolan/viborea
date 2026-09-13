@@ -1,12 +1,8 @@
-Viborea is a fork of Tandava.
+This repository operates Academia Diego González (SimplyBook, Chatwoot, WhatsApp/Meta).
+
+It historically began as a fork of Tandava (AGPL-3.0). The Tandava SPA and Supabase tree are no longer shipped. Remaining files stay under the GNU Affero General Public License v3.0. See LICENSE.
 
   Copyright (C) 2024-2026 Tandava Contributors
-  Copyright (C) 2026 Viborea Contributors
+  Copyright (C) 2026 Academia DG / Viborea Contributors
 
-Tandava is licensed under the GNU Affero General Public License v3.0.
-This fork remains under AGPL-3.0. The LICENSE file is unmodified.
-
-Viborea is not affiliated with Cal.com. Cal.com / Cal.diy source is not
-included in this repository.
-
-The original project: https://github.com/TaylorONeal/tandava
+Not affiliated with Cal.com. The original Tandava project: https://github.com/TaylorONeal/tandava

@@ -26,9 +26,9 @@ Chatwoot CE inbox  ──AgentBot webhook──►  this Worker
         └──────── Application API ◄────────────┘
 ```
 
-Production WhatsApp that already points at KAPSO must stay on KAPSO. Run this against a Chatwoot inbox that owns its own number (Meta test number, or a second WABA).
+Production WhatsApp that already points at KAPSO stays on KAPSO until [ADR 0007](../../docs/adr/0007-cut-production-whatsapp-after-simplybook.md) gates are green ([sequence](../../docs/corte-kapso-chatwoot.md)). Until then, run this against a Chatwoot inbox that owns its own number (Meta test number, or a second WABA). Do not attach this AgentBot to a production inbox: `decide` still opens the menu for any unmatched text.
 
-WhatsApp **message templates** are not created here. They are WABA assets (Graph API). Chatwoot inbox 4 only syncs `APPROVED` templates and can send them. Procedure: [`docs/fork/WHATSAPP.md`](../../docs/fork/WHATSAPP.md).
+WhatsApp **message templates** are not created here. They are WABA assets (Graph API). Chatwoot inbox 4 only syncs `APPROVED` templates and can send them. Procedure: [`docs/whatsapp.md`](../../docs/whatsapp.md).
 
 ## Requirements
 
@@ -89,7 +89,7 @@ Secrets for that environment already live on the Cloudflare Worker. Operational 
 | --- | --- |
 | `hola`, `menu`, `/start`, … | List; points first-timers to «Soy nuevo» |
 | `Soy nuevo` / precios | Academy pitch, prices, video; next step is reservar / horarios / humano |
-| `Reservar primera clase` / sí after the pitch | SimplyBook widget URL (`academiadg.secure.simplybook.me`) |
+| `Reservar primera clase` / sí after the pitch | SimplyBook widget URL (`https://academiadg.simplybook.me/v2/`) |
 | `Ver horarios` / disponibilidad | Same widget URL — no fake slots, no grid |
 | `Confirmar clase` / `Reprogramar` | Widget URL, or that booking’s cancel/move link when we have it |
 | `Pagar` | Stub payment copy |

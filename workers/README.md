@@ -1,6 +1,6 @@
 # Workers
 
-Small edge services that sit next to Viborea. They are not the schedule engine (`core/`).
+Edge services for Academia DG. The calendar of record is SimplyBook, not `core/`.
 
 | Package | Role |
 | --- | --- |
