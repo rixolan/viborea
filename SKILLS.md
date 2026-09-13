@@ -14,13 +14,31 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 
 1. Read the **Current focus** block in [AGENTS.md](AGENTS.md) and [docs/adr/0005-simplybook-chatwoot-only.md](docs/adr/0005-simplybook-chatwoot-only.md).
 2. Calendar of record is SimplyBook. Inbox is Chatwoot. Do not implement or extend the Viborea booker, Academia UI, or `manage_token` as the live path.
-3. Player-facing copy: never “Viborea”, never `viborea.com`, never `/reservar`. Book/cancel/reschedule links are the SimplyBook widget (`https://academiadg.secure.simplybook.me`) or `GET /admin/bookings/{id}/links`.
-4. WhatsApp for this piloto: only `+595971638427` until the allowlist opens. No automation that messages other contacts on cancel/confirm.
+3. Player-facing copy: never “Viborea”, never `viborea.com`, never `/reservar`. Book/cancel/reschedule links are the SimplyBook widget (`https://academiadg.simplybook.me/v2/`) or `GET /admin/bookings/{id}/links`. Never the host without `/v2/` (internal panel).
+4. WhatsApp for this piloto: only `+595971638427` until the allowlist opens. No automation that messages other contacts on cancel/confirm. Inbound (student wrote in the last 24 h) is AgentBot + Chatwoot humans/canned replies; opening or reopening a chat after 24 h is a WABA **message template**. Load **whatsapp-inbox**.
 5. Leave `core/` and `web/` alone unless the user explicitly revives that surface.
 
 **Files:** `AGENTS.md`, `docs/adr/0004-simplybook-holds-sessions.md`, `docs/adr/0005-simplybook-chatwoot-only.md`, `workers/chatwoot-agent-bot/`
 
 **Check:** player copy and WhatsApp bodies contain no `viborea`; `bun --cwd workers/chatwoot-agent-bot test`
+
+---
+
+## simplybook-absence
+
+**When:** a profe está de vacaciones, enfermo, viaja, tiene un torneo, falta; or the user says ausencia, special days, block time, suplente, remapear.
+
+**Do:**
+
+1. Load [docs/fork/simplybook/SKILL.md](docs/fork/simplybook/SKILL.md). That file is the procedure.
+2. Facts first (profe, rango, días vs tramo, destino de las fijas). Classify E01–E17 with [SIMPLYBOOK-MIGRACION.md](docs/fork/SIMPLYBOOK-MIGRACION.md) §9; do not copy the catalog.
+3. List occupying bookings **before** any SimplyBook write. Propose remaps (same day+hour+sede, then ask). Dual/grupal move as a hueco.
+4. Show the plan. Write only after explicit yes: mark special days or block time, then `editBook`/`cancelBooking`. Never `madre_rows`, never weekly schedule, never `--prune`.
+5. Player copy: castellano, no “Viborea”, SimplyBook `/v2/` or that booking’s link. Diego sends via inbox. WhatsApp only `+595971638427`.
+
+**Files:** `docs/fork/simplybook/SKILL.md`, `docs/fork/SIMPLYBOOK-MIGRACION.md` §9, `core/scripts/simplybook.ts`
+
+**Check:** plan before write; no Viborea in player copy; madre and weekly hours untouched
 
 ---
 
@@ -136,6 +154,26 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 
 ---
 
+## whatsapp-inbox
+
+**When:** WhatsApp, message template, plantilla Meta, ventana 24 h, AgentBot, canned reply, iniciar conversación, recordatorio por WhatsApp, Chatwoot inbox.
+
+**Do:**
+
+1. Read the **WhatsApp: 24h window vs message templates** table in [AGENTS.md](AGENTS.md) and [docs/fork/WHATSAPP.md](docs/fork/WHATSAPP.md). Glossary: **WhatsApp message template** in [CONTEXT.md](CONTEXT.md) — not the schedule `templates` table.
+2. The split is the **customer care window**, not “first contact ever”:
+   - Student wrote in the last **24 h** → reply in Chatwoot. **AgentBot** (`workers/chatwoot-agent-bot/src/bot.ts`: list + prepared copy). After «Hablar con alguien», a **human** (Diego) uses free text and Chatwoot canned replies / macros. No Meta message template required. Templates *may* still be sent inside the window; they are not the default.
+   - We speak first, **or** last student message is older than 24 h (reminders, “¿venís mañana?”, re-engagement) → approved **WhatsApp message template** on the WABA. Chatwoot inbox 4 **sends** (`template_params`); Chatwoot **does not create** them (ADR 0006).
+3. Creating a message template (`core/scripts/whatsapp-message-templates.ts`, Infisical `WHATSAPP_TEST_TOKEN` + `WHATSAPP_TEST_WABA_ID`) does not send a WhatsApp. Do not add a `send` subcommand to that CLI.
+4. Live DG send is Chatwoot inbox 4, allowlisted to `+595971638427`. Do not use `core/src/whatsapp` send / `manage_token` as the live path (ADR 0005). Do not attach the AgentBot to production until ADR 0007 gates are green. No OpenWA/WAHA/wacli on academy numbers.
+5. Canned replies in Chatwoot ≠ Meta message templates. AgentBot copy ≠ message templates.
+
+**Files:** `AGENTS.md` (24h table), `docs/fork/WHATSAPP.md`, `docs/adr/0006-whatsapp-message-templates-on-waba.md`, `core/src/whatsapp/`, `core/scripts/whatsapp-message-templates.ts`, `workers/chatwoot-agent-bot/`
+
+**Check:** never a production webhook URL; never treat Chatwoot as the template author; `bun --cwd core test src/whatsapp` if you touch the Cloud API client.
+
+---
+
 ## payments-channels
 
 **When:** cobro, TPago, WhatsApp, Chatwoot, Meta, inbox.
@@ -146,8 +184,8 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 2. Happy path payment is stub / manual mark paid in Academia. `core/src/payments/tpago.ts` stays behind the interface. No live keys in git or chat.
 3. Do not connect the academy’s production WhatsApp/Meta number. No OpenWA/WAHA.
 4. Chatwoot AgentBot: `workers/chatwoot-agent-bot/` — sandbox or a dedicated WABA only. It does not write the grid and does not paint cells. It sends the SimplyBook widget or that booking’s SimplyBook cancel/reschedule link. «Hablar con alguien» is a human (Diego on DG). Guest book is name + WhatsApp; do not require SimplyBook Client Login. DG sessions live in SimplyBook (ADR 0004). The Viborea booker is paused (ADR 0005): never send `viborea.com` or `/reservar` to a player.
-5. Live WhatsApp for this piloto goes through Chatwoot Application API to inbox 4, allowlisted to `+595971638427`. Do not turn on cancel/confirm automation for other contacts. `core/src/whatsapp/` send helpers and `manage-link.ts` (`/reservar/:slug/turno/:token`) are the paused Viborea path — do not use them as the live DG send.
-6. WhatsApp **message templates** are WABA assets (Graph API or WhatsApp Manager), not Chatwoot and not `domain/template.ts`. Create with `WHATSAPP_TEST_TOKEN` + `WHATSAPP_TEST_WABA_ID` from Infisical env **`dev`**. Procedure: [docs/fork/WHATSAPP.md](docs/fork/WHATSAPP.md). Creating does not send. Never the KAPSO production WABA.
+5. Live WhatsApp for this piloto goes through Chatwoot Application API to inbox 4, allowlisted to `+595971638427`. Do not turn on cancel/confirm automation for other contacts. `core/src/whatsapp/` send helpers and `manage-link.ts` (`/reservar/:slug/turno/:token`) are the paused Viborea path — do not use them as the live DG send. Follow **whatsapp-inbox** for the 24h window vs message templates.
+6. WhatsApp **message templates** are WABA assets (Graph API or WhatsApp Manager), not Chatwoot canned replies and not `domain/template.ts`. Required to start or reopen a chat when there is no 24 h window. Create with `WHATSAPP_TEST_TOKEN` + `WHATSAPP_TEST_WABA_ID` from Infisical env **`dev`**. Procedure: [docs/fork/WHATSAPP.md](docs/fork/WHATSAPP.md). Creating does not send. Never the KAPSO production WABA.
 7. Secrets: Infisical env **`dev`** (`.infisical.json`). WhatsApp keys `WHATSAPP_TEST_TOKEN`, `WHATSAPP_TEST_WABA_ID`, `WHATSAPP_TEST_PHONE_NUMBER_ID`. Never commit tokens.
 8. Cutoff and pack rules: `core/src/domain/cutoff.ts`, `pack.ts`. Configurable per academy.
 

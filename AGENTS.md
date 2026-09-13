@@ -9,16 +9,28 @@ If this file and `docs/` or `CLAUDE.md` disagree, this file and `CONTEXT.md` win
 **Forget the Viborea product surface for now.** Academia DG’s live path is SimplyBook.me (calendar, book, cancel, reschedule) and Chatwoot (WhatsApp inbox). Do not implement, extend, or send players there until this is lifted.
 
 - Player-facing copy never says “Viborea” and never links `viborea.com` or `/reservar`.
-- Book / cancel / reschedule URLs: `https://academiadg.secure.simplybook.me` or that booking’s SimplyBook show/cancel/reschedule link.
+- Book / cancel / reschedule URLs: `https://academiadg.simplybook.me/v2/` or that booking’s SimplyBook show/cancel/reschedule link. Never the host without `/v2/` (that is the internal panel).
 - Leave `core/` and `web/` in the tree. Do not delete them, do not “finish” the booker, do not wire `manage_token` as the live manage link.
 - Piloto WhatsApp: only `+595971638427` until the allowlist opens. No cancel/confirm automation for other contacts.
+- Production number cut (Kapso → Chatwoot native) is [ADR 0007](docs/adr/0007-cut-production-whatsapp-after-simplybook.md). Do not execute it. Gates: [docs/fork/CORTE-KAPSO-CHATWOOT.md](docs/fork/CORTE-KAPSO-CHATWOOT.md).
+
+### WhatsApp: 24h window vs message templates
+
+The split is the **customer care window**, not “have they ever written”. Full procedure: [docs/fork/WHATSAPP.md](docs/fork/WHATSAPP.md). ADR 0006.
+
+| Situation | What to use |
+|---|---|
+| Student wrote in the last **24 h** | **AgentBot** (`workers/chatwoot-agent-bot/`: list + copy in `bot.ts`) and/or a **human in Chatwoot** (free text, canned replies / macros). No Meta message template required. |
+| We speak first, **or** last student message is older than 24 h | Approved **WhatsApp message template** on the WABA. Chatwoot inbox 4 can **send** it; Chatwoot **cannot create** it. Canned replies are not message templates. |
+
+Creating a message template ≠ sending. Class reminders and “¿venís mañana?” after silence are templates even if the student is already a Chatwoot contact. Do not use `core/src/whatsapp` send as the live DG path (ADR 0005).
 
 ## Read first
 
 1. The **Current focus** block above — DG work is SimplyBook + Chatwoot (ADR 0005).
 2. [CONTEXT.md](CONTEXT.md) — glossary. Identifiers in English. Do not invent synonyms.
 3. This file — stack, tree, constraints, where to change things.
-4. [SKILLS.md](SKILLS.md) — load the skill that matches the task before editing.
+4. [SKILLS.md](SKILLS.md) — load the skill that matches the task before editing. Profe ausente / vacaciones / enfermo / torneo: [docs/fork/simplybook/SKILL.md](docs/fork/simplybook/SKILL.md).
 5. [docs/fork/DOMINIO-VIBOREA.md](docs/fork/DOMINIO-VIBOREA.md) — court + session + coach, overlap, packs. Paused as a live path.
 6. [NOTICE](NOTICE) + [LICENSE](LICENSE) — AGPL-3.0 fork of Tandava. Do not delete copyright.
 
@@ -43,6 +55,7 @@ Product name: **Viborea**. Metaphor (the padel shot *bandeja*) may appear in dom
 | Pista / cancha | `courts` (`court` in schema) | `pista`/`cancha` as column names |
 | Clase (instancia) | `sessions` | class, slot, reservation as identity |
 | Planilla madre | `templates` | Calendly event type |
+| Message template (WhatsApp) | WABA message template | Chatwoot canned reply, `templates` table |
 | Reserva | `bookings` | Payment, appointment |
 | Pack | `packs` / entitlement | Membership as the only product |
 
@@ -187,7 +200,7 @@ Coach portraits: `web/public/coaches/{coach_id}.webp` → `/coaches/…`. Not Po
 
 - A second writable grid for Academia DG. SimplyBook holds those sessions; José operates the panel. Do not require SimplyBook Client Login. The Viborea public booker is paused (ADR 0005); do not send players there.
 - Chatwoot AgentBot classifying sessions or painting cells. It sends the SimplyBook widget or that booking’s SimplyBook cancel/move link. «Hablar con alguien» is Diego. Player copy never names Viborea.
-- Production Meta / WhatsApp of the academy. No OpenWA/WAHA. Chatwoot worker is sandbox / dedicated number only.
+- Production Meta / WhatsApp of the academy until ADR 0007 gates are green. No OpenWA/WAHA. Chatwoot worker is sandbox / dedicated number only. Do not Embedded-Signup the live WABA, do not subscribe a second app to it, and do not attach the AgentBot to a production inbox.
 - Live TPago, Pagopar, Mercado Pago, Stripe Checkout as happy path. Keep `PaymentProvider` / `core/src/payments/tpago.ts` behind the interface.
 - Payroll / coach pooling.
 - Player progress portal, Captain AI, public court marketplace.
@@ -212,12 +225,14 @@ Coach portraits: `web/public/coaches/{coach_id}.webp` → `/coaches/…`. Not Po
 | Coach bio / languages | `coaches.bio`, `coaches.languages` via `core/src/seed.ts` (`alignCatalog`) |
 | Compose / Traefik | `compose.yaml` (network name must match live Docker network) |
 | WhatsApp Cloud API / message templates | `core/src/whatsapp/`, `core/scripts/whatsapp-message-templates.ts`, [docs/fork/WHATSAPP.md](docs/fork/WHATSAPP.md), Infisical `dev` |
+| WhatsApp inbox (inbound ≤24h) | `workers/chatwoot-agent-bot/` + Chatwoot humans / canned replies |
 | Manage link / player cookie | `bookings.manage_token`, `students.cookie_token`, `core/src/manage-link.ts`, `player-cookie.ts` |
 | Local time / weeks | `core/src/domain/timezone.ts`, `web/src/time.ts` |
 | Catálogo, franjas, ajustes | `core/src/db.ts` CRUD + `/api` + `web/src/pages.tsx` (`AcademiaCatalogo`, `AcademiaProfes`, `AcademiaAjustes`) |
 | Panel de disponibilidad | `web/src/availability-editor.tsx` (Cal.com-style day rows, plus a sede per range) + `replaceCoachAvailability` |
 | Rate limits / holds / quota | `core/src/ratelimit.ts`, `expireStaleHolds`, `MAX_UPCOMING_BOOKINGS` |
 | WhatsApp menu (sandbox) | `workers/chatwoot-agent-bot/` — widget / manage-link only; no grid writes |
+| Dual (pareja) | ADR 0008; `core/scripts/simplybook-configure-dual.ts` + intake en Dual; `simplybook-materialize-dual.ts` |
 
 Commits: only if the human asks, unless the same session is already shipping to `origin/main` for deploy.
 

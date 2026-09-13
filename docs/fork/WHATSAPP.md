@@ -60,6 +60,19 @@ Comprobado 2026-09-13 contra Graph `v21.0`:
 
 Hay una WABA de test de José (`+1 555 677 5521`, app “ADG Test Chatwoot”). No está en Infisical `dev`. No la uses para message templates de este repo.
 
+## Ventana de 24 h vs message templates
+
+El corte no es “nunca nos escribieron”. Es si hay **ventana de atención de 24 h** abierta (último mensaje del student).
+
+| Situación | Qué usar |
+|---|---|
+| El student escribió en las últimas **24 h** | **AgentBot** (`workers/chatwoot-agent-bot/`: lista + copy en `bot.ts`) y/o **humano en Chatwoot** (texto libre, respuestas preparadas / macros). No hace falta message template. Se *puede* mandar una plantilla dentro de la ventana; no es el default. |
+| Nosotros hablamos primero, **o** el último mensaje del student tiene más de 24 h | Message template **APPROVED** en la WABA. Recordatorios de clase y “¿venís mañana?” entran acá aunque el contacto ya exista en Chatwoot. |
+
+Chatwoot **envía** plantillas (`template_params` en inbox 4). Chatwoot **no las crea**. Las respuestas preparadas de Chatwoot **no** son message templates de Meta. El AgentBot **no** abre chats fríos.
+
+Crear (`POST /{waba}/message_templates`) **no manda un WhatsApp**.
+
 ## Crear vs enviar
 
 Crear (`POST /{waba}/message_templates`) **no manda un WhatsApp**. Meta deja el status `PENDING` y revisa (minutos a ~24 h). Chatwoot solo sincroniza `APPROVED`.
