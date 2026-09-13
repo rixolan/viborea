@@ -48,7 +48,7 @@ import { CutoffError } from "./domain/cutoff";
 import { OverlapError, type BookingStatus, type DayOfWeek } from "./domain/types";
 import { instantFrom, parseTimeOfDay } from "./domain/timezone";
 import { readClerk, requireAcademy } from "./auth";
-import { configFromEnv as whatsappConfig, notifyReservation } from "./notify/whatsapp";
+import { configFromEnv as whatsappConfig, notifyReservation } from "./whatsapp";
 import { cookieName, legacyStudentId, readCookie, setPlayerCookieHeader } from "./player-cookie";
 import { legacyBookingId, manageUrl, publicOrigin } from "./manage-link";
 import { RateLimiter, clientIp } from "./ratelimit";

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { digits, notifyReservation, sendText } from "./whatsapp";
+import { digits, notifyReservation, sendText } from "./index";
 
 const cfg = { token: "tok", phoneNumberId: "105" };
 
-describe("whatsapp", () => {
+describe("whatsapp send", () => {
   it("normaliza teléfono a dígitos", () => {
     expect(digits("+595 981 111 111")).toBe("595981111111");
     expect(digits("5950971638427")).toBe("595971638427");
@@ -18,7 +18,7 @@ describe("whatsapp", () => {
     const result = await sendText(cfg, "+595981111111", "Te quedan 9", fetchFn);
     expect(result.ok).toBe(true);
     expect(result.id).toBe("wamid.1");
-    expect(calls[0]?.url).toContain("/105/messages");
+    expect(calls[0]?.url).toContain("/v21.0/105/messages");
     expect(calls[0]?.body).toMatchObject({
       messaging_product: "whatsapp",
       to: "595981111111",

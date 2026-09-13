@@ -81,7 +81,7 @@ core/src/api.ts      JSON API
 core/src/secret.ts   signing secrets for cookie + manage links (required in prod)
 core/src/ratelimit.ts  per-IP limiter for the public booker
 core/src/server.ts   Bun.serve: API, SPA, 60s tick (holds + reminders)
-core/src/notify/     WhatsApp Cloud API sandbox (`WHATSAPP_TEST_*`)
+core/src/whatsapp/   Meta Cloud API sandbox (send + message templates)
 core/src/seed.ts     demo academy if empty; `alignCatalog` replaces DG roster
 web/src/             React SPA (landing, reservar, academia)
 web/src/time.ts      formats every date in the academy timezone
@@ -175,7 +175,7 @@ Coach portraits: `web/public/coaches/{coach_id}.webp` → `/coaches/…`. Not Po
 - No signing secret to manage: the WhatsApp manage link is `bookings.manage_token` and the guest cookie is `students.cookie_token`, both random per row. Moving Clerk from `pk_test` to `pk_live` no longer invalidates the links already sent. `PLAYER_COOKIE_SECRET` / `CLERK_SECRET_KEY` are read only to verify links issued before migration 017; once those classes have passed, `PLAYER_COOKIE_SECRET` can go away entirely.
 - Backups: the `backup` service runs `ops/pg-backup.sh` (nightly `pg_dump` → volume `viborea_backups`, `BACKUP_KEEP_DAYS` retention). Snapshot before a risky deploy: `docker compose -p viborea run --rm backup /usr/local/bin/pg-backup.sh --once`. Restore: `gunzip -c viborea-<stamp>.sql.gz | psql -U viborea -d viborea`.
 - Image build arg Clerk: `NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY` (publishable only). Runtime `CLERK_SECRET_KEY` from `.env` (`NUXT_CLERK_SECRET_KEY` alias). Live image still uses **Clerk development** (`pk_test`) until a `pk_live` rebuild.
-- WhatsApp sandbox: `WHATSAPP_TEST_TOKEN` + `WHATSAPP_TEST_PHONE_NUMBER_ID` from Doppler project **viborea** config **dev** (prd is empty). `APP_URL=https://viborea.com`. Dokploy “Redeploy” rewrites `.env` from its stored blob and **drops** those keys unless they are in the Dokploy env UI.
+- WhatsApp sandbox: Infisical env **`dev`** (`.infisical.json`). `WHATSAPP_TEST_TOKEN` (system user; this one creates message templates), `WHATSAPP_TEST_WABA_ID`, `WHATSAPP_TEST_PHONE_NUMBER_ID`. See [docs/fork/WHATSAPP.md](docs/fork/WHATSAPP.md). Dokploy “Redeploy” rewrites `.env` from its stored blob and **drops** those keys unless they are in the Dokploy env UI.
 - Deploy command (one `docker`, not `docker docker`):
   `git fetch && git reset --hard origin/main`
   then `docker compose -p viborea --env-file .env build app && docker compose -p viborea --env-file .env up -d --no-deps app`
@@ -211,7 +211,7 @@ Coach portraits: `web/public/coaches/{coach_id}.webp` → `/coaches/…`. Not Po
 | Coach portraits | `web/public/coaches/{id}.webp` + `COACH_PHOTOS` in `web/src/booker.tsx` |
 | Coach bio / languages | `coaches.bio`, `coaches.languages` via `core/src/seed.ts` (`alignCatalog`) |
 | Compose / Traefik | `compose.yaml` (network name must match live Docker network) |
-| WhatsApp send / reminders | `core/src/notify/whatsapp.ts`, `server.ts` tick, Doppler `viborea/dev` |
+| WhatsApp Cloud API / message templates | `core/src/whatsapp/`, `core/scripts/whatsapp-message-templates.ts`, [docs/fork/WHATSAPP.md](docs/fork/WHATSAPP.md), Infisical `dev` |
 | Manage link / player cookie | `bookings.manage_token`, `students.cookie_token`, `core/src/manage-link.ts`, `player-cookie.ts` |
 | Local time / weeks | `core/src/domain/timezone.ts`, `web/src/time.ts` |
 | Catálogo, franjas, ajustes | `core/src/db.ts` CRUD + `/api` + `web/src/pages.tsx` (`AcademiaCatalogo`, `AcademiaProfes`, `AcademiaAjustes`) |

@@ -28,6 +28,8 @@ Chatwoot CE inbox  ──AgentBot webhook──►  this Worker
 
 Production WhatsApp that already points at KAPSO must stay on KAPSO. Run this against a Chatwoot inbox that owns its own number (Meta test number, or a second WABA).
 
+WhatsApp **message templates** are not created here. They are WABA assets (Graph API). Chatwoot inbox 4 only syncs `APPROVED` templates and can send them. Procedure: [`docs/fork/WHATSAPP.md`](../../docs/fork/WHATSAPP.md).
+
 ## Requirements
 
 - Chatwoot Community Edition (self-hosted is fine)

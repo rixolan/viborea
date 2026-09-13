@@ -7,7 +7,7 @@ import {
   openDb,
 } from "./db";
 import { seedIfEmpty, alignCatalog } from "./seed";
-import { configFromEnv as whatsappConfig, notifyReservation } from "./notify/whatsapp";
+import { configFromEnv as whatsappConfig, notifyReservation } from "./whatsapp";
 import { manageUrl, publicOrigin } from "./manage-link";
 import { pilotoReserva } from "./piloto";
 import { parseCategory, parseSide } from "./domain/student";

@@ -123,7 +123,7 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
    One `docker`, never `docker docker compose` (Dokploy UI has shown that typo → `unknown shorthand flag: 'p'`).
 6. Avoid `up` that recreates `db`. Volume `viborea_pgdata` is the data. `bandeja-2ryryu_pgdata` is backup. “volume already exists” is not a failure.
 7. Clerk publishable key: compose build-arg `NUXT_PUBLIC_CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY`.
-8. WhatsApp: copy `WHATSAPP_TEST_*` from Doppler `viborea`/`dev` into the VPS `.env` after any Dokploy Redeploy (it overwrites `.env`). `APP_URL=https://viborea.com`.
+8. WhatsApp: copy `WHATSAPP_TEST_*` from Infisical env `dev` into the VPS `.env` after any Dokploy Redeploy (it overwrites `.env`). `APP_URL=https://viborea.com`.
 8b. There is no signing secret to set: manage links and the guest cookie are random per-row tokens. `PLAYER_COOKIE_SECRET` only verifies links issued before migration 017, so rotating Clerk is safe.
 8c. The `backup` service dumps nightly to volume `viborea_backups`. Take a one-shot snapshot before a migration deploy: `docker compose -p viborea run --rm backup /usr/local/bin/pg-backup.sh --once`.
 9. Metabase (`academiadg-metabase-nimooc`): network `viborea`, host `viborea-db-1`. Do not print DB passwords or git oauth tokens.
@@ -146,11 +146,12 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 2. Happy path payment is stub / manual mark paid in Academia. `core/src/payments/tpago.ts` stays behind the interface. No live keys in git or chat.
 3. Do not connect the academy’s production WhatsApp/Meta number. No OpenWA/WAHA.
 4. Chatwoot AgentBot: `workers/chatwoot-agent-bot/` — sandbox or a dedicated WABA only. It does not write the grid and does not paint cells. It sends the SimplyBook widget or that booking’s SimplyBook cancel/reschedule link. «Hablar con alguien» is a human (Diego on DG). Guest book is name + WhatsApp; do not require SimplyBook Client Login. DG sessions live in SimplyBook (ADR 0004). The Viborea booker is paused (ADR 0005): never send `viborea.com` or `/reservar` to a player.
-5. Live WhatsApp for this piloto goes through Chatwoot Application API to inbox 4, allowlisted to `+595971638427`. Do not turn on cancel/confirm automation for other contacts. `core/src/notify/whatsapp.ts` and `manage-link.ts` (`/reservar/:slug/turno/:token`) are the paused Viborea path — do not use them as the live DG send.
-6. Secrets: Doppler project **viborea**, config **dev**. Never commit tokens.
-7. Cutoff and pack rules: `core/src/domain/cutoff.ts`, `pack.ts`. Configurable per academy.
+5. Live WhatsApp for this piloto goes through Chatwoot Application API to inbox 4, allowlisted to `+595971638427`. Do not turn on cancel/confirm automation for other contacts. `core/src/whatsapp/` send helpers and `manage-link.ts` (`/reservar/:slug/turno/:token`) are the paused Viborea path — do not use them as the live DG send.
+6. WhatsApp **message templates** are WABA assets (Graph API or WhatsApp Manager), not Chatwoot and not `domain/template.ts`. Create with `WHATSAPP_TEST_TOKEN` + `WHATSAPP_TEST_WABA_ID` from Infisical env **`dev`**. Procedure: [docs/fork/WHATSAPP.md](docs/fork/WHATSAPP.md). Creating does not send. Never the KAPSO production WABA.
+7. Secrets: Infisical env **`dev`** (`.infisical.json`). WhatsApp keys `WHATSAPP_TEST_TOKEN`, `WHATSAPP_TEST_WABA_ID`, `WHATSAPP_TEST_PHONE_NUMBER_ID`. Never commit tokens.
+8. Cutoff and pack rules: `core/src/domain/cutoff.ts`, `pack.ts`. Configurable per academy.
 
-**Files:** `core/src/payments/tpago.ts`, `core/src/notify/whatsapp.ts`, `core/src/manage-link.ts`, `docs/fork/TPAGO.md`, `workers/chatwoot-agent-bot/README.md`
+**Files:** `core/src/whatsapp/`, `core/scripts/whatsapp-message-templates.ts`, `core/src/payments/tpago.ts`, `core/src/manage-link.ts`, `docs/fork/WHATSAPP.md`, `docs/fork/TPAGO.md`, `workers/chatwoot-agent-bot/README.md`
 
 **Check:** domain tests; never a production webhook URL in this repo.
 

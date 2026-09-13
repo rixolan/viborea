@@ -60,6 +60,10 @@ _Avoid_: booking, charge (como sinónimo de session)
 Metadata de origen del booking (`web`, `whatsapp`, `admin`). No forka la grilla.
 _Avoid_: inbox, conversation
 
+**WhatsApp message template**:
+Mensaje preaprobado por Meta para hablarle a un student fuera de la ventana de 24 h. Vive en la WABA. No es la planilla madre (`templates`) ni un artefacto de Chatwoot.
+_Avoid_: template (a secas), Chatwoot template como fuente
+
 **Student**:
 Ficha de **una** academia. Teléfono único dentro de esa academia. No es la persona ni un usuario de software.
 _Avoid_: client, user, member, Person
