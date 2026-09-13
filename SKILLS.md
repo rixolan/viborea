@@ -6,6 +6,24 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 
 ---
 
+## current-focus-simplybook-chatwoot
+
+**When:** always. Any DG, booking, cancel, WhatsApp, inbox, or “player” task.
+
+**Do:**
+
+1. Read the **Current focus** block in [AGENTS.md](AGENTS.md) and [docs/adr/0005-simplybook-chatwoot-only.md](docs/adr/0005-simplybook-chatwoot-only.md).
+2. Calendar of record is SimplyBook. Inbox is Chatwoot. Do not implement or extend the Viborea booker, Academia UI, or `manage_token` as the live path.
+3. Player-facing copy: never “Viborea”, never `viborea.com`, never `/reservar`. Book/cancel/reschedule links are the SimplyBook widget (`https://academiadg.secure.simplybook.me`) or `GET /admin/bookings/{id}/links`.
+4. WhatsApp for this piloto: only `+595971638427` until the allowlist opens. No automation that messages other contacts on cancel/confirm.
+5. Leave `core/` and `web/` alone unless the user explicitly revives that surface.
+
+**Files:** `AGENTS.md`, `docs/adr/0004-simplybook-holds-sessions.md`, `docs/adr/0005-simplybook-chatwoot-only.md`, `workers/chatwoot-agent-bot/`
+
+**Check:** player copy and WhatsApp bodies contain no `viborea`; `bun --cwd workers/chatwoot-agent-bot test`
+
+---
+
 ## domain-language
 
 **When:** naming entities, copy, routes, schema columns, or the user says cliente/admin/profe/bandeja/cancha/pista.
@@ -37,7 +55,7 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 3. Hours are **local to `academy.timezone`**. Build instants with `core/src/domain/timezone.ts` (`instantFrom`, `weekWindow`); never `setUTCHours`. Weeks come from `weekOf` / `weekOfAcademy`.
 4. Occupying bookings: `pending_payment` | `confirmed` | `checked_in` (`OCCUPYING_BOOKING_STATUSES`). A cancelled booking may be revived on the same row.
 5. Writes that decide a cupo run inside `db.begin` with the session row locked `FOR UPDATE`, and availability holes behind `pg_advisory_xact_lock`.
-6. Individual/grupal are offerings with `capacity` 1 / N. Do not add dual as a third engine (CONTEXT.md).
+6. Individual / dual / grupal are offerings with `capacity` 1 / 2 / N. Dual is not a third engine (CONTEXT.md).
 7. Templates materialize sessions; exceptions edit one occurrence. Persist via `ensureWeek` / `createSession` in `core/src/db.ts`.
 8. Keep the same error type (`OverlapError`). The API must surface the message, not swallow it.
 
@@ -127,8 +145,8 @@ How to use: if the user task matches **When**, follow **Do** in order. Do not sk
 1. Booking ≠ transaction. Channel is booking metadata (`web` | `whatsapp` | `admin`), not a second calendar.
 2. Happy path payment is stub / manual mark paid in Academia. `core/src/payments/tpago.ts` stays behind the interface. No live keys in git or chat.
 3. Do not connect the academy’s production WhatsApp/Meta number. No OpenWA/WAHA.
-4. Chatwoot AgentBot: `workers/chatwoot-agent-bot/` — sandbox or a dedicated WABA only. It does not write the real grid yet.
-5. Notify + 24h reminder: `core/src/notify/whatsapp.ts` (dry-run unless `WHATSAPP_TEST_*` set). Manage link `core/src/manage-link.ts` → `/reservar/:slug/turno/:token`, where the token is `bookings.manage_token` (random per row, no secret). Cancel/reschedule only if `selfServeOpen` (cutoff, default 12h). Mark `reminded_at` only on a delivered free-text send: dry-run and the `hello_world` fallback are not reminders.
+4. Chatwoot AgentBot: `workers/chatwoot-agent-bot/` — sandbox or a dedicated WABA only. It does not write the grid and does not paint cells. It sends the SimplyBook widget or that booking’s SimplyBook cancel/reschedule link. «Hablar con alguien» is a human (Diego on DG). Guest book is name + WhatsApp; do not require SimplyBook Client Login. DG sessions live in SimplyBook (ADR 0004). The Viborea booker is paused (ADR 0005): never send `viborea.com` or `/reservar` to a player.
+5. Live WhatsApp for this piloto goes through Chatwoot Application API to inbox 4, allowlisted to `+595971638427`. Do not turn on cancel/confirm automation for other contacts. `core/src/notify/whatsapp.ts` and `manage-link.ts` (`/reservar/:slug/turno/:token`) are the paused Viborea path — do not use them as the live DG send.
 6. Secrets: Doppler project **viborea**, config **dev**. Never commit tokens.
 7. Cutoff and pack rules: `core/src/domain/cutoff.ts`, `pack.ts`. Configurable per academy.
 
@@ -187,3 +205,6 @@ Never implement in a default session:
 - Native apps
 - Bun rewrite of the Tandava `src/` tree “for cleanliness”
 - Dual as a third offering engine (unless CONTEXT.md is updated first)
+- Reviving or extending the Viborea booker / Academia UI / `manage_token` as DG’s live path (ADR 0005)
+- Player-facing copy that names Viborea or links `viborea.com` / `/reservar`
+- WhatsApp to anyone but `+595971638427` unless the user opens the allowlist

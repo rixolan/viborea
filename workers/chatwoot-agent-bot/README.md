@@ -11,7 +11,7 @@ Cloudflare Worker that answers a Chatwoot Community Edition inbox with a WhatsAp
 5. Pagar
 6. Hablar con alguien
 
-It is the WhatsApp menu for a padel academy. It does **not** talk to KAPSO, does **not** steal a production Meta webhook, and does **not** write the real schedule or take payment yet.
+It is the WhatsApp inbox for a padel academy. It does **not** talk to KAPSO, does **not** steal a production Meta webhook, does **not** paint the grid, and does **not** take payment. It sends the SimplyBook widget (or that booking’s SimplyBook cancel/move link). «Hablar con alguien» is Diego. Player-facing copy never names Viborea and never links `viborea.com` (ADR 0005).
 
 Chatwoot CE includes AgentBot. Cloudflare Workers Free (100k requests/day) is enough for this handler.
 
@@ -51,7 +51,7 @@ Then put the Worker URL on a Chatwoot AgentBot and attach it to the inbox:
 ```bash
 CHATWOOT_BASE_URL=https://your-chatwoot.example.com \
 CHATWOOT_ACCESS_TOKEN=... \
-CHATWOOT_INBOX_ID=2 \
+CHATWOOT_INBOX_ID=4 \
 OUTGOING_URL=https://viborea-chatwoot-bot.<account>.workers.dev \
 bun run register
 ```
@@ -73,7 +73,7 @@ Never commit `.dev.vars` or tokens. Chatwoot user id `1` and AgentBot id `1` can
 
 ### Academia DG sandbox
 
-The live pilot Worker is `academia-dg-chatwoot-bot` (inbox `2`, WhatsApp test number). Deploy that name without creating a second Worker:
+The live Worker is `academia-dg-chatwoot-bot` (inbox `4`, WhatsApp `+595994374895`). Deploy that name without creating a second Worker:
 
 ```bash
 bun run deploy:academia-dg
@@ -85,11 +85,13 @@ Secrets for that environment already live on the Cloudflare Worker. Operational 
 
 | Inbound | Reply |
 | --- | --- |
-| `hola`, `menu`, `/start`, … | List + a sandbox slot; points first-timers to «Soy nuevo» |
-| `Soy nuevo` / precios | Academy pitch, languages, July prices, sedes; list stays open |
-| `Ver horarios` / disponibilidad | Three example slots (not the real sheet); list stays open |
-| List tap or the same words | Intent text (sandbox copy) |
-| `humano` | Assigns `CHATWOOT_HUMAN_ASSIGNEE_ID` as **User**, then a handoff line |
+| `hola`, `menu`, `/start`, … | List; points first-timers to «Soy nuevo» |
+| `Soy nuevo` / precios | Academy pitch, prices, video; next step is reservar / horarios / humano |
+| `Reservar primera clase` / sí after the pitch | SimplyBook widget URL (`academiadg.secure.simplybook.me`) |
+| `Ver horarios` / disponibilidad | Same widget URL — no fake slots, no grid |
+| `Confirmar clase` / `Reprogramar` | Widget URL, or that booking’s cancel/move link when we have it |
+| `Pagar` | Stub payment copy |
+| `humano` | Assigns `CHATWOOT_HUMAN_ASSIGNEE_ID` as **User** (Diego on DG), then a handoff line |
 | Anything else | List again |
 
 Outgoing, private, and other-inbox events are ignored (`200`) so Chatwoot does not retry.

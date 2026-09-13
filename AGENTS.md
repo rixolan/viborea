@@ -4,13 +4,23 @@ Operating manual for coding agents working on **Viborea**.
 
 If this file and `docs/` or `CLAUDE.md` disagree, this file and `CONTEXT.md` win. Tandava yoga/Supabase docs under `docs/prd`, `docs/developer`, `src/` (repo root) are the **fork reference**, not the product.
 
+## Current focus — SimplyBook + Chatwoot (ADR 0005)
+
+**Forget the Viborea product surface for now.** Academia DG’s live path is SimplyBook.me (calendar, book, cancel, reschedule) and Chatwoot (WhatsApp inbox). Do not implement, extend, or send players there until this is lifted.
+
+- Player-facing copy never says “Viborea” and never links `viborea.com` or `/reservar`.
+- Book / cancel / reschedule URLs: `https://academiadg.secure.simplybook.me` or that booking’s SimplyBook show/cancel/reschedule link.
+- Leave `core/` and `web/` in the tree. Do not delete them, do not “finish” the booker, do not wire `manage_token` as the live manage link.
+- Piloto WhatsApp: only `+595971638427` until the allowlist opens. No cancel/confirm automation for other contacts.
+
 ## Read first
 
-1. [CONTEXT.md](CONTEXT.md) — glossary. Identifiers in English. Do not invent synonyms.
-2. This file — stack, tree, constraints, where to change things.
-3. [SKILLS.md](SKILLS.md) — load the skill that matches the task before editing.
-4. [docs/fork/DOMINIO-VIBOREA.md](docs/fork/DOMINIO-VIBOREA.md) — court + session + coach, overlap, packs.
-5. [NOTICE](NOTICE) + [LICENSE](LICENSE) — AGPL-3.0 fork of Tandava. Do not delete copyright.
+1. The **Current focus** block above — DG work is SimplyBook + Chatwoot (ADR 0005).
+2. [CONTEXT.md](CONTEXT.md) — glossary. Identifiers in English. Do not invent synonyms.
+3. This file — stack, tree, constraints, where to change things.
+4. [SKILLS.md](SKILLS.md) — load the skill that matches the task before editing.
+5. [docs/fork/DOMINIO-VIBOREA.md](docs/fork/DOMINIO-VIBOREA.md) — court + session + coach, overlap, packs. Paused as a live path.
+6. [NOTICE](NOTICE) + [LICENSE](LICENSE) — AGPL-3.0 fork of Tandava. Do not delete copyright.
 
 Then read the files you will touch. Do not start from the Tandava SPA.
 
@@ -89,6 +99,8 @@ supabase/            Tandava migrations. Not the product DB.
 
 ## Domain engine (non-negotiable)
 
+For Academia DG the calendar of record is SimplyBook (ADR 0004). The live player path is SimplyBook + Chatwoot (ADR 0005); the rules below are the paused product model in `core/`, not what to ship to players now. `simplybook-sync` is a replica, not a second cupo.
+
 - **Session** exists with court + coach + interval even if nobody booked or paid. On DG it is created at the first booking on an availability hole.
 - **Availability** (`coach_availability`) is DG’s mother: coach + location + weekday + franja, exploded to 60 min holes. Not a Session.
 - Overlap: same half-open interval `[start, end)` **and** same `court_id` **or** same `coach_id` → error. Adjacent hours do not overlap. Cancelled sessions do not occupy. Enforced by **Postgres**: `sessions_court_no_overlap` / `sessions_coach_no_overlap` (GiST `EXCLUDE` on `tstzrange`, `WHERE NOT cancelled`). A TypeScript-only check cannot win a race; `createSession` translates `23P01` into `OverlapError`.
@@ -99,7 +111,7 @@ supabase/            Tandava migrations. Not the product DB.
 - `cancelSession` cancels every booking on the class and gives pack classes back regardless of cutoff (the academia cancelled, not the player), and the API notifies each player by WhatsApp.
 - `academy.hold_minutes` (0 = off) expires unpaid `web` holds in the 60s tick and tells the player. `MAX_UPCOMING_BOOKINGS` caps one ficha at 20 classes ahead.
 - Occupying booking statuses: `pending_payment`, `confirmed`, `checked_in`. Not: `cancelled`, `waitlisted`, `no_show`.
-- Offerings are capacity 1 (individual) or N (grupal). CONTEXT.md: **no dual** as a third engine.
+- Offerings are capacity 1 (individual), 2 (dual) or N (grupal). Dual is an offering, not a third engine.
 - Template (`templates`) still materializes `sessions` (`source = template`) where used. Exception edits one session.
 - `/api/a/:slug/week` returns `weekGrid` (locked sessions + free holes). Staff `/api/week` still `ensureWeek`.
 - Cutoff: `academy.cutoff_hours` (default 12). Self-serve book/cancel/reschedule only outside that window.
@@ -148,7 +160,7 @@ Coach portraits: `web/public/coaches/{coach_id}.webp` → `/coaches/…`. Not Po
 - Schema: `core/src/db/schema.sql`. Additive changes: new id in `core/src/db/migrate.ts`.
 - Boot: `openDb` → migrate → `seedIfEmpty`. **`alignCatalog` only when `SEED_ALIGN_DG=1`**: it rewrites the DG roster from `seed.ts` and drops that academy's templates and availability, so on every boot it silently deleted whatever staff had edited.
 - Migrations 012–017: local-time reinterpretation of `sessions`, the two GiST exclusion constraints, `bookings.created_at` / `reminder_attempts`, `academy.hold_minutes`, one availability block per coach+weekday+start, and the per-row tokens. All of them run inside one transaction behind `pg_advisory_xact_lock`, so parallel boots (or `bun test` opening several pools) cannot race. 013 refuses to apply while two live overlapping sessions both hold reservations; cancel one of each pair it names.
-- A new academia (Clerk org) gets Individual (cupo 1) and Grupal (cupo 4) offerings automatically; sedes, canchas, profes and franjas are loaded from `/academia/catalogo` and `/academia/profes`, not from code.
+- A new academia (Clerk org) gets Individual (cupo 1) and Grupal (cupo 4) offerings automatically. DG also has Dual (cupo 2, Gs. 120.000). Sedes, canchas, profes and franjas are loaded from `/academia/catalogo` and `/academia/profes`, not from code.
 - Production DB name/user: `viborea`. Compose volume: `viborea_pgdata`. Do not publish Postgres to the internet.
 - N academias per Postgres (`academy_id` on tenant tables). Who may open `/academia`: Clerk Organization (ADR 0002 + 0003). Not `{slug}.viborea.com` yet.
 - Do not add `academy_id` only to decorate URLs. Isolation is application-scoped queries, not RLS.
@@ -173,6 +185,8 @@ Coach portraits: `web/public/coaches/{coach_id}.webp` → `/coaches/…`. Not Po
 
 ## Constraints (do not)
 
+- A second writable grid for Academia DG. SimplyBook holds those sessions; José operates the panel. Do not require SimplyBook Client Login. The Viborea public booker is paused (ADR 0005); do not send players there.
+- Chatwoot AgentBot classifying sessions or painting cells. It sends the SimplyBook widget or that booking’s SimplyBook cancel/move link. «Hablar con alguien» is Diego. Player copy never names Viborea.
 - Production Meta / WhatsApp of the academy. No OpenWA/WAHA. Chatwoot worker is sandbox / dedicated number only.
 - Live TPago, Pagopar, Mercado Pago, Stripe Checkout as happy path. Keep `PaymentProvider` / `core/src/payments/tpago.ts` behind the interface.
 - Payroll / coach pooling.
@@ -203,7 +217,7 @@ Coach portraits: `web/public/coaches/{coach_id}.webp` → `/coaches/…`. Not Po
 | Catálogo, franjas, ajustes | `core/src/db.ts` CRUD + `/api` + `web/src/pages.tsx` (`AcademiaCatalogo`, `AcademiaProfes`, `AcademiaAjustes`) |
 | Panel de disponibilidad | `web/src/availability-editor.tsx` (Cal.com-style day rows, plus a sede per range) + `replaceCoachAvailability` |
 | Rate limits / holds / quota | `core/src/ratelimit.ts`, `expireStaleHolds`, `MAX_UPCOMING_BOOKINGS` |
-| WhatsApp menu (sandbox) | `workers/chatwoot-agent-bot/` |
+| WhatsApp menu (sandbox) | `workers/chatwoot-agent-bot/` — widget / manage-link only; no grid writes |
 
 Commits: only if the human asks, unless the same session is already shipping to `origin/main` for deploy.
 

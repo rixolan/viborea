@@ -1,4 +1,4 @@
-import { MENU_ITEMS, decide, replyForIntent, type MenuValue } from "./bot";
+import { MENU_ITEMS, decide, replyForIntent, type BotIntent, type SelectItem } from "./bot";
 
 export type Env = {
   CHATWOOT_BASE_URL: string;
@@ -21,12 +21,23 @@ async function cw(env: Env, path: string, body: unknown): Promise<Response> {
   });
 }
 
-async function sendSelect(env: Env, conversationId: number, content: string) {
+async function sendSelect(
+  env: Env,
+  conversationId: number,
+  content: string,
+  items: readonly SelectItem[] = MENU_ITEMS,
+) {
   return cw(env, `/conversations/${conversationId}/messages`, {
     content,
     content_type: "input_select",
-    content_attributes: { items: MENU_ITEMS },
+    content_attributes: { items },
     private: false,
+  });
+}
+
+async function setAwaiting(env: Env, conversationId: number, awaiting: "reservar" | null) {
+  await cw(env, `/conversations/${conversationId}/custom_attributes`, {
+    custom_attributes: { bot_awaiting: awaiting ?? "" },
   });
 }
 
@@ -38,9 +49,12 @@ async function sendText(env: Env, conversationId: number, content: string) {
   });
 }
 
-async function handleIntent(env: Env, conversationId: number, intent: MenuValue) {
+async function handleIntent(env: Env, conversationId: number, intent: BotIntent) {
   const human = env.CHATWOOT_HANDOFF_NAME || "alguien del equipo";
   const reply = replyForIntent(intent, human);
+  if (reply.awaiting !== undefined) {
+    await setAwaiting(env, conversationId, reply.awaiting);
+  }
   if (reply.kind === "handoff") {
     await cw(env, `/conversations/${conversationId}/assignments`, {
       assignee_id: Number(env.CHATWOOT_HUMAN_ASSIGNEE_ID || "1"),
@@ -49,7 +63,7 @@ async function handleIntent(env: Env, conversationId: number, intent: MenuValue)
     return sendText(env, conversationId, reply.content);
   }
   if (reply.kind === "select") {
-    return sendSelect(env, conversationId, reply.content);
+    return sendSelect(env, conversationId, reply.content, reply.items ?? MENU_ITEMS);
   }
   return sendText(env, conversationId, reply.content);
 }

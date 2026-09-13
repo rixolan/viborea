@@ -1,8 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import {
+  BOOKING_URL,
+  FALLBACK_PROMPT,
   GREETING_PROMPT,
+  HORARIOS_PROMPT,
+  MANAGE_PROMPT,
+  NUEVO_NEXT_ITEMS,
+  NUEVO_PROMPT,
+  RESERVAR_PROMPT,
   asIncoming,
   decide,
+  isAffirmative,
   isGreeting,
   matchIntent,
   norm,
@@ -60,7 +68,7 @@ describe("asIncoming", () => {
 describe("decide", () => {
   const inbox = "2";
 
-  test("opens the menu on greeting with a sandbox slot", () => {
+  test("opens the menu on greeting", () => {
     expect(
       decide(
         {
@@ -126,28 +134,102 @@ describe("decide", () => {
       ),
     ).toEqual({ action: "ignore", reason: "ignored" });
   });
+
+  test("does not reopen the menu after handoff to a human", () => {
+    const handed = {
+      event: "message_created",
+      message_type: "incoming",
+      content: "Hola",
+      conversation: {
+        id: 6,
+        inbox_id: 2,
+        assignee_id: 1,
+        meta: { assignee: { id: 1, type: "user" } },
+      },
+      sender: { type: "contact" },
+    };
+    expect(decide(handed, inbox)).toEqual({ action: "ignore", reason: "handed off" });
+    expect(decide({ ...handed, content: "Soy nuevo" }, inbox)).toEqual({
+      action: "ignore",
+      reason: "handed off",
+    });
+  });
 });
 
 describe("matchIntent", () => {
   test("reads aliases in a sentence", () => {
     expect(matchIntent(norm("quiero ver los horarios"))).toBe("horarios");
     expect(matchIntent(norm("precios"))).toBe("nuevo");
-    expect(matchIntent(norm("primera vez"))).toBe("nuevo");
+    expect(matchIntent(norm("primera clase"))).toBe("reservar");
+    expect(matchIntent(norm("Reservar primera clase"))).toBe("reservar");
+  });
+});
+
+describe("isAffirmative", () => {
+  test("accepts short yes", () => {
+    expect(isAffirmative("si")).toBe(true);
+    expect(isAffirmative("dale")).toBe(true);
+    expect(isAffirmative("no")).toBe(false);
   });
 });
 
 describe("replyForIntent", () => {
-  test("first-timer pitch and slots keep the list open", () => {
-    expect(replyForIntent("nuevo", "Diego").kind).toBe("select");
-    expect(replyForIntent("nuevo", "Diego").content).toContain("Diego González");
-    expect(replyForIntent("horarios", "Diego").kind).toBe("select");
-    expect(replyForIntent("horarios", "Diego").content).toContain("Mañana 11:00");
+  test("first-timer pitch lists dual price and 24h cancel, then a booking CTA", () => {
+    const nuevo = replyForIntent("nuevo", "Diego");
+    expect(nuevo.kind).toBe("select");
+    expect(nuevo.items).toEqual(NUEVO_NEXT_ITEMS);
+    expect(nuevo.awaiting).toBe("reservar");
+    expect(nuevo.content).toContain("Diego González");
+    expect(nuevo.content).toContain("Dual");
+    expect(nuevo.content).toContain("120.000");
+    expect(nuevo.content).toContain("Individual");
+    expect(nuevo.content).toContain("Grupal");
+    expect(nuevo.content).toContain("24 h");
+    expect(nuevo.content).toContain("wistia.com");
+    expect(replyForIntent("reservar", "Diego").content).toContain(BOOKING_URL);
+    expect(replyForIntent("horarios", "Diego").kind).toBe("text");
+    expect(replyForIntent("horarios", "Diego").content).toContain(BOOKING_URL);
+    expect(replyForIntent("horarios", "Diego").content).not.toContain("Mañana 11:00");
+    expect(replyForIntent("confirmar", "Diego").content).toContain(BOOKING_URL);
+    expect(replyForIntent("reprogramar", "Diego").content).toContain(BOOKING_URL);
+  });
+
+  test("player copy never names Viborea; book URL is SimplyBook", () => {
+    const copy = [
+      GREETING_PROMPT,
+      FALLBACK_PROMPT,
+      NUEVO_PROMPT,
+      RESERVAR_PROMPT,
+      HORARIOS_PROMPT,
+      MANAGE_PROMPT,
+      BOOKING_URL,
+      replyForIntent("pagar", "Diego").content,
+      replyForIntent("humano", "Diego").content,
+    ].join("\n");
+    expect(copy.toLowerCase()).not.toContain("viborea");
+    expect(BOOKING_URL).toBe("https://academiadg.secure.simplybook.me");
+  });
+
+  test("sí after the first-timer pitch means book", () => {
+    expect(
+      decide(
+        {
+          event: "message_created",
+          message_type: "incoming",
+          content: "Sí",
+          conversation: { id: 6, inbox_id: 2, custom_attributes: { bot_awaiting: "reservar" } },
+          sender: { type: "contact" },
+        },
+        "2",
+      ),
+    ).toEqual({ action: "intent", conversationId: 6, intent: "reservar" });
   });
 
   test("human is a User handoff", () => {
     expect(replyForIntent("humano", "Diego")).toEqual({
       kind: "handoff",
       content: "Te paso con Diego. En un rato te escribe.",
+      awaiting: null,
     });
   });
 });

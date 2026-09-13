@@ -8,35 +8,55 @@ export const MENU_ITEMS = [
 ] as const;
 
 export const GREETING_PROMPT =
-  "Hola, Academia DG.\n\nSi es tu primera vez, tocá «Soy nuevo».\nMañana 11:00 — Individual en Lomas (ejemplo, sandbox).\n\n¿Qué necesitás?";
+  "Hola, Academia DG.\n\nSi es tu primera vez, tocá «Soy nuevo».\nSi ya entrenás, elegí lo que necesitás.";
 
 export const FALLBACK_PROMPT = "No te seguí. Elegí una opción:";
 
-export const NUEVO_PROMPT = `Academia Diego González — profes del pádel.
+export const BOOKING_URL = "https://academiadg.secure.simplybook.me";
+export const VIDEO_URL = "https://academiadg.wistia.com/s/m57ddl4jit16i4j";
 
-Tres clubes de Asunción: Lomas, Elite Padel y Habana.
-Desde el primer golpe hasta alto rendimiento. Clases en español, inglés, portugués e italiano.
+export const NUEVO_PROMPT = `*Academia Diego González*
+Pádel en Asunción — Lomas, Elite y Segurola.
 
-Un equipo de profes de primera, con Diego González al frente.
+*Clases (60 min)*
+• Individual — Gs. 150.000
+• Dual — Gs. 120.000
+• Grupal — Gs. 100.000
 
-Individual Gs. 150.000 · Dual 125.000 · Grupal 100.000
-(precios de julio, sandbox)
+Se paga adelantado. Si cancelás con *menos de 24 h*, se cobra la clase.
 
-Se paga adelantado. Si cancelás con menos de 24 h, se cobra.
+Español, inglés, portugués y guaraní.
 
-¿Horarios, o hablamos?`;
+Si querés conocer la academia más a fondo, preparamos este video:
+${VIDEO_URL}
 
-export const HORARIOS_PROMPT = `Disponibilidad de ejemplo — no lee la planilla:
+¿Reservamos tu primera clase?`;
 
-• Mañana 11:00 — Individual · Lomas
-• Miércoles 16:00 — Dual · Elite Padel
-• Jueves 16:00 — Grupal · Habana
+export const NUEVO_NEXT_ITEMS = [
+  { title: "Reservar primera clase", value: "reservar" },
+  { title: "Ver horarios", value: "horarios" },
+  { title: "Hablar con alguien", value: "humano" },
+] as const;
 
-El pico 15:00–17:00 suele estar lleno.
+export const RESERVAR_PROMPT = `Perfecto. Elegí sede, profe y horario acá:
 
-Elegí otra opción o pedí hablar con alguien para un hueco real.`;
+${BOOKING_URL}
+
+Si preferís que te anotemos nosotros, tocá «Hablar con alguien».`;
+
+export const HORARIOS_PROMPT = `Los horarios de cada profe están acá:
+
+${BOOKING_URL}
+
+Elegí sede, profe y hora. Si preferís que te anotemos nosotros, tocá «Hablar con alguien».`;
+
+export const MANAGE_PROMPT = `Para confirmar, cancelar o mover una reserva, usá el enlace de esa clase (te lo mandamos acá cuando la tengamos). Si querés una clase nueva:
+
+${BOOKING_URL}`;
 
 export type MenuValue = (typeof MENU_ITEMS)[number]["value"];
+export type BotIntent = MenuValue | "reservar";
+export type SelectItem = { title: string; value: string };
 
 const MENU_VALUES = new Set<string>(MENU_ITEMS.map((i) => i.value));
 const MENU_TITLES = new Map(
@@ -57,15 +77,27 @@ export function isGreeting(s: string): boolean {
   );
 }
 
-const ALIASES: Array<[RegExp, MenuValue]> = [
-  [/\b(nuevo|nueva|primera|clases?|precios?|modalidades?|info|academia)\b/, "nuevo"],
+const NEXT_TITLES = new Map(
+  NUEVO_NEXT_ITEMS.map((i) => [norm(i.title), i.value] as const),
+);
+
+const ALIASES: Array<[RegExp, BotIntent]> = [
+  [/\b(reserv(ar|emos|a)|primera clase|anotar(me)?|quiero empezar)\b/, "reservar"],
+  [/\b(nuevo|nueva|precios?|modalidades?|info|academia)\b/, "nuevo"],
   [/\b(horarios?|disponibilidad|huecos?|cuando)\b/, "horarios"],
 ];
 
-export function matchIntent(text: string): MenuValue | undefined {
+export function isAffirmative(text: string): boolean {
+  return /^(si+|dale|ok|okay|va+|vamos|claro|perfecto|de una|buenisimo|anota(me)?|reservemos|reservar)$/.test(
+    text,
+  );
+}
+
+export function matchIntent(text: string): BotIntent | undefined {
+  if (text === "reservar") return "reservar";
   if (MENU_VALUES.has(text)) return text as MenuValue;
-  const titled = MENU_TITLES.get(text);
-  if (titled) return titled;
+  const titled = MENU_TITLES.get(text) ?? NEXT_TITLES.get(text);
+  if (titled) return titled as BotIntent;
   for (const [re, value] of ALIASES) {
     if (re.test(text)) return value;
   }
@@ -75,35 +107,33 @@ export function matchIntent(text: string): MenuValue | undefined {
 export type IntentReply = {
   kind: "select" | "text" | "handoff";
   content: string;
+  items?: readonly SelectItem[];
+  awaiting?: "reservar" | null;
 };
 
-export function replyForIntent(intent: MenuValue, human: string): IntentReply {
+export function replyForIntent(intent: BotIntent, human: string): IntentReply {
   switch (intent) {
     case "nuevo":
-      return { kind: "select", content: NUEVO_PROMPT };
+      return { kind: "select", content: NUEVO_PROMPT, items: NUEVO_NEXT_ITEMS, awaiting: "reservar" };
+    case "reservar":
+      return { kind: "text", content: RESERVAR_PROMPT, awaiting: null };
     case "horarios":
-      return { kind: "select", content: HORARIOS_PROMPT };
+      return { kind: "text", content: HORARIOS_PROMPT, awaiting: null };
     case "confirmar":
-      return {
-        kind: "text",
-        content:
-          "Listo: dejamos la clase confirmada. (Sandbox: todavía no toca el calendario real.)",
-      };
     case "reprogramar":
-      return {
-        kind: "text",
-        content: `Podemos mover la clase. Decime día y horario, o tocá «Hablar con alguien». (Sandbox.)`,
-      };
+      return { kind: "text", content: MANAGE_PROMPT, awaiting: null };
     case "pagar":
       return {
         kind: "text",
         content:
           "Acá iría el link de pago. En este piloto es solo el texto. Cuando esté el enlace, te llega en este mismo paso.",
+        awaiting: null,
       };
     case "humano":
       return {
         kind: "handoff",
         content: `Te paso con ${human}. En un rato te escribe.`,
+        awaiting: null,
       };
   }
 }
@@ -114,9 +144,25 @@ export type Incoming = {
   private?: boolean;
   content?: string | null;
   content_type?: string;
-  conversation?: { id?: number; inbox_id?: number };
+  conversation?: {
+    id?: number;
+    inbox_id?: number;
+    assignee_id?: number | null;
+    custom_attributes?: Record<string, unknown>;
+    meta?: { assignee?: { id?: number; type?: string } | null };
+    assignee?: { id?: number; type?: string } | null;
+  };
   sender?: { type?: string };
 };
+
+export function hasHumanAssignee(conversation: Incoming["conversation"]): boolean {
+  if (!conversation) return false;
+  if (typeof conversation.assignee_id === "number" && conversation.assignee_id > 0) return true;
+  const fromMeta = conversation.meta?.assignee?.id;
+  if (typeof fromMeta === "number" && fromMeta > 0) return true;
+  const fromObj = conversation.assignee?.id;
+  return typeof fromObj === "number" && fromObj > 0;
+}
 
 function unwrapPayload(body: unknown): Record<string, unknown> {
   if (!body || typeof body !== "object") return {};
@@ -175,7 +221,7 @@ export function isIncomingMessage(msg: Incoming): boolean {
 
 export type Decision =
   | { action: "ignore"; reason: string }
-  | { action: "intent"; conversationId: number; intent: MenuValue }
+  | { action: "intent"; conversationId: number; intent: BotIntent }
   | { action: "menu"; conversationId: number; prompt: string };
 
 export function decide(body: unknown, inboxId: string): Decision {
@@ -188,9 +234,17 @@ export function decide(body: unknown, inboxId: string): Decision {
   if (msgInbox && inboxId && msgInbox !== inboxId) {
     return { action: "ignore", reason: "other inbox" };
   }
+  if (hasHumanAssignee(msg.conversation)) {
+    return { action: "ignore", reason: "handed off" };
+  }
 
   const text = norm(msg.content ?? "");
   if (!text) return { action: "ignore", reason: "empty" };
+
+  const awaiting = msg.conversation?.custom_attributes?.bot_awaiting;
+  if (awaiting === "reservar" && isAffirmative(text)) {
+    return { action: "intent", conversationId, intent: "reservar" };
+  }
 
   const intent = matchIntent(text);
   if (intent) return { action: "intent", conversationId, intent };

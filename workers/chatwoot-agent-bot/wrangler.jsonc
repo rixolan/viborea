@@ -23,7 +23,7 @@
       },
       "vars": {
         "CHATWOOT_ACCOUNT_ID": "1",
-        "CHATWOOT_INBOX_ID": "2",
+        "CHATWOOT_INBOX_ID": "4",
         "CHATWOOT_HUMAN_ASSIGNEE_ID": "1",
         "CHATWOOT_HANDOFF_NAME": "Diego"
       }
